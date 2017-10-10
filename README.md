@@ -1,1 +1,1 @@
-# fanta
+# fantasy-football

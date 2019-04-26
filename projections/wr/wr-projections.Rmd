@@ -1,0 +1,130 @@
+---
+title: "WR Projections"
+output: html_notebook
+---
+
+
+Here's the idea for WR projections:
+
+Using historical data, build a clustering algorithm for each season. Cluster on total fantasy points scored.
+
+In each season, evaluate variance explained based on cluster size.
+
+Pick one cluster size to apply to all seasons.
+
+Use that cluster size and determine what the average value is for the 1st, 2nd, 3rd, ... cluster.
+
+Build a projection system that analyzes the probability of being in 1st cluster or not, 2nd or not, etc.
+
+Normalize those predictions and then calculate a projected points value as an expected value of cluster and cluster points.
+
+This will be a high bias, low variance system, I think.
+
+
+```{r}
+library(tidyverse)
+load("/home/john/projects/fantasy-football/data/analysis-data/wr.Rda")
+```
+
+
+Initial clustering:
+
+Use 2000-2009
+
+
+```{r}
+n_centers <- 10
+seasons <- 10
+m <- matrix(0,nrow = n_centers*seasons,ncol = 3)
+output <- list()
+counter <- 1
+for(y in c(2000:2009)){
+  
+  df <- wr %>% filter(year == y, league_rank <= 40)
+  
+  for(centers in c(1:10)){
+  
+    k <- kmeans(df$total_points,centers,nstart = 20)
+    
+    df$cluster <- k$cluster
+    
+    output[[counter]] <- list()
+    output[[counter]] <- df %>%
+      group_by(cluster) %>%
+      summarise(count = n(),
+                mean_points = mean(total_points)) %>%
+      arrange(desc(mean_points)) %>%
+      mutate(tier = row_number())
+    
+    m[counter,] <- c(y,centers,k$betweenss/k$totss)
+  
+    counter <- counter+1
+    
+    rm(k)
+  }
+}
+  
+```
+
+
+
+Plot the results:
+```{r}
+for(y in c(2000:2009)){
+  plot <-
+  ggplot(data = m %>% as.data.frame() %>% filter(V1 == y),
+         aes(x = V2, y = V3)) +
+    geom_point() +
+    geom_line() +
+    ggtitle(paste0("Year ",as.character(y)))
+  print(plot)
+  rm(plot)
+}
+```
+
+Five groups seems to work well...
+
+```{r}
+ix <- seq(from = 5, to = 5 + n_centers*seasons, by = 10)
+
+output[ix]
+
+five_groups <- do.call(rbind,output[ix])
+five_groups$year <- rep(c(2000:2009),each = 5)
+
+ggplot(data = five_groups,
+       aes(x = as.factor(tier), y = mean_points)) +
+  geom_boxplot() +
+  geom_point()
+```
+
+```{r}
+five_groups %>%
+  group_by(tier) %>%
+  summarise(min_points = min(mean_points),
+            max_points = max(mean_points),
+            mean_points = mean(mean_points),
+            min_count = min(count),
+            max_count = max(count),
+            mean_count = mean(count))
+```
+
+Look at these values over time...
+
+```{r}
+ggplot(data = five_groups,
+       aes(x = year, y = mean_points,group = tier, colour = tier)) +
+  geom_point() +
+  geom_line()
+
+```
+
+
+```{r}
+ggplot(data = five_groups,
+       aes(x = year, y = mean_points/16,group = tier, colour = tier)) +
+  geom_point() +
+  geom_line()
+
+```
+

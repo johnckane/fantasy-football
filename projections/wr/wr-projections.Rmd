@@ -128,3 +128,93 @@ ggplot(data = five_groups,
 
 ```
 
+## There are two outlier seasons in the data, causing a top tier of size 1. See what happens if we remove those.
+
+```{r}
+five_groups %>%
+  filter(count == 1)
+```
+
+```{r}
+wr %>%
+  filter(total_points %in% c(265.3,215.0))
+```
+
+```{r}
+wr_filtered <- wr %>%
+  filter(!(total_points %in% c(265.3,215.0)))
+```
+
+```{r}
+n_centers <- 5
+seasons <- 10
+m <- matrix(0,nrow = 5*seasons,ncol = 3)
+output2 <- list()
+counter <- 1
+
+for(y in c(2000:2009)){
+  
+  df <- wr_filtered %>% filter(year == y, league_rank <= 40)
+  
+    k <- kmeans(df$total_points,n_centers,nstart = 20)
+    
+    df$cluster <- k$cluster
+    
+    output2[[counter]] <- list()
+    output2[[counter]] <- df %>%
+      group_by(cluster) %>%
+      summarise(count = n(),
+                mean_points = mean(total_points)) %>%
+      arrange(desc(mean_points)) %>%
+      mutate(tier = row_number())
+    
+    m[counter,] <- c(y,n_centers,k$betweenss/k$totss)
+    counter <- counter+1
+    rm(k)
+}
+```
+
+```{r}
+output2
+```
+
+
+
+```{r}
+five_groups <- do.call(rbind,output2)
+five_groups$year <- rep(c(2000:2009),each = 5)
+five_groups
+```
+
+```{r}
+five_groups %>%
+  group_by(tier) %>%
+  summarise(mean_points = mean(mean_points))
+```
+
+
+```{r}
+head(wr)
+```
+
+
+
+
+## Need two things:
+1) P(top 40)
+2) P(being in each tier) really 5 things
+
+
+## Need to build a pipeline for doing this...
+
+Should we filter out the seasons that result in tier 1 being of only size 1 - no I'm thinking now.
+
+What we want to have is 
+
+|               | lag these values        |           | lag these values                                   |
+| player | year | team_rank | league_rank | exp | age | tier 1 | tier 2 | tier 3 | tier 4 | tier 5 | top40 |
+
+
+The alternative would be to do league rank 1-5, 6-10, 11-20, 21-40.
+
+

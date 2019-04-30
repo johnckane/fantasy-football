@@ -1,0 +1,28 @@
+---
+title: "top40-models"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+load("/home/john/projects/fantasy-football/data/analysis-data/wr.Rda")
+```
+
+```{r}
+head(wr)
+```
+
+```{r}
+min(wr$experience)
+```
+
+```{r}
+wr %>%
+  filter(experience == 0) %>%
+  mutate(top40 = ifelse(league_rank <= 40,1,0)) %>%
+  group_by(year) %>%
+  summarise(count = n(),
+            sum = sum(top40),
+            ttl = sum(top40)/n())
+```
+

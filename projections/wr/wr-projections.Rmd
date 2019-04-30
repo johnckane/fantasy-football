@@ -199,6 +199,133 @@ head(wr)
 
 
 
+How do the tiers compare to straight league ranks?
+
+```{r}
+five_groups %>%
+  group_by(tier) %>%
+  summarise(mean_points = mean(mean_points),
+            mean_count = mean(count))
+```
+
+The spread is 20-30 points. 
+
+```{r}
+wr %>%
+  filter(league_rank <= 40) %>%
+  mutate(rank_tier = case_when(league_rank <= 5 ~ 1,
+                               between(league_rank,6,10) ~ 2,
+                               between(league_rank,11,20) ~ 3,
+                               between(league_rank,21,40) ~ 4,
+                               TRUE ~ NA_real_)) %>%
+  group_by(rank_tier) %>%
+  summarise(mean_points = mean(total_points)) %>%
+  mutate(mean_ppg = mean_points/16)
+```
+
+
+
+```{r}
+wr %>%
+  filter(league_rank <= 40) %>%
+  mutate(rank_tier = case_when(league_rank <= 5 ~ 1,
+                               between(league_rank,6,10) ~ 2,
+                               between(league_rank,11,20) ~ 3,
+                               between(league_rank,21,30) ~ 4,
+                               between(league_rank,31,40) ~ 5,
+                               TRUE ~ NA_real_)) %>%
+  group_by(rank_tier) %>%
+  summarise(mean_points = mean(total_points)) %>%
+  mutate(mean_ppg = mean_points/16) 
+```
+
+```{r}
+wr %>%
+  filter(league_rank <= 40) %>%
+  mutate(rank_tier = case_when(between(league_rank,1,8) ~ 1,
+                               between(league_rank,9,16) ~ 2,
+                               between(league_rank,17,24) ~ 3,
+                               between(league_rank,25,32) ~ 4,
+                               between(league_rank,33,40) ~ 5,
+                               TRUE ~ NA_real_)) %>%
+  group_by(rank_tier) %>%
+  summarise(mean_points = mean(total_points)) %>%
+  mutate(mean_ppg = mean_points/16)
+```
+
+```{r}
+wr %>%
+  filter(league_rank <= 40) %>%
+  mutate(rank_tier = case_when(between(league_rank,1,8) ~ 1,
+                               between(league_rank,9,16) ~ 2,
+                               between(league_rank,17,24) ~ 3,
+                               between(league_rank,25,32) ~ 4,
+                               between(league_rank,33,40) ~ 5,
+                               TRUE ~ NA_real_)) %>%
+  group_by(rank_tier) %>%
+  summarise(mean_points = mean(total_points)) %>%
+  mutate(mean_ppg = mean_points/16)
+```
+
+```{r}
+wr %>%
+  filter(league_rank <= 40) %>%
+  mutate(group = case_when(between(league_rank,1,5) ~ 1,
+                           between(league_rank,6,10) ~ 1.5,
+                           between(league_rank,11,20) ~ 2,
+                           between(league_rank,21,30) ~ 3,
+                           between(league_rank,31,40) ~ 4,
+                           TRUE ~ NA_real_)) %>%
+  ggplot(data = .,
+         aes(x = league_rank,
+             y = total_points)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth() +
+  geom_smooth(aes(colour = as.factor(group), group = group),method = "lm") +
+  geom_smooth(method = 'lm')
+```
+
+```{r}
+wr %>%
+  filter(league_rank <= 40, year > 2010) %>%
+  mutate(group = case_when(between(league_rank,1,5) ~ 1,
+                           between(league_rank,6,10) ~ 1.5,
+                           between(league_rank,11,20) ~ 2,
+                           between(league_rank,21,30) ~ 3,
+                           between(league_rank,31,40) ~ 4,
+                           TRUE ~ NA_real_)) %>%
+  ggplot(data = .,
+         aes(x = league_rank,
+             y = total_points)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth() +
+  geom_smooth(aes(colour = as.factor(group), group = group),method = "lm") +
+  geom_smooth(method = 'lm')
+```
+
+
+
+
+
+
+How can we get them the most evenly spaced...
+
+What divides into 40
+
+
+```{r}
+divisors <- c(1,2,4,5,8,10,20,40)
+group_size <- 40/divisors
+?Hmisc::cut2
+```
+
+```{r}
+wr %>%
+  filter(league_rank <= 40) %>%
+  mutate(group = case_when(between(league_rank,))
+  
+```
+
 
 ## Need two things:
 1) P(top 40)

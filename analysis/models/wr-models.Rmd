@@ -1,0 +1,931 @@
+---
+title: "WR Models"
+output: html_notebook
+---
+
+
+```{r}
+library(tidyverse)
+library(xgboost)
+load("/home/john/fantasy-football/data/analysis-data/wr.Rda")
+load("/home/john/fantasy-football/data/analysis-data/wr_offense.Rda")
+wr_model_data <- 
+wr %>%
+  filter(is.na(league_rank) == FALSE) %>%
+  mutate(top40 = ifelse(league_rank <= 40,1,0),
+         top20 = ifelse(league_rank <= 20,1,0),
+         top10 = ifelse(league_rank <= 10,1,0),
+         top5  = ifelse(league_rank <= 5,1,0)) %>%
+  arrange(player,year) %>%
+  group_by(player) %>%
+  mutate(top40_lastyear = ifelse(lag(year) == year - 1, lag(top40),NA),
+         top20_lastyear = ifelse(lag(year) == year - 1, lag(top20),NA),
+         top10_lastyear = ifelse(lag(year) == year - 1, lag(top10),NA),
+         top5_lastyear  = ifelse(lag(year) == year - 1, lag(top5),NA),
+         team_rank_lastyear = ifelse(lag(year) == year - 1,lag(team_rank),NA),
+         league_rank_lastyear = ifelse(lag(year) == year - 1,lag(league_rank),NA))
+```
+
+```{r}
+
+```
+
+
+#### Models
+
+- We have four outcomes of interest, top 5, 10, 20 and 40. 
+- Want to start to predict one year's top X based on previous data.
+- use xgboost so we can use NA values
+
+model1: use year 2000 values to predict 2001 values
+model2: use year 2000 and 2001 values to predict 2002 values
+```{r}
+colnames(wr_model_data)
+```
+
+```{r}
+model1 <- glm(data = wr_model_data %>% filter(year == 2001),
+             family = "binomial",
+             formula = top20 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear + team_rank_lastyear +
+               league_rank_lastyear)
+summary(model1)
+
+?predict.glm
+pred_values1 <- predict.glm(model1, 
+                        newdata = wr_model_data %>% filter(year == 2002),
+                        type = "response")
+
+df <- data.frame(pv = pred_values1,
+                 act = wr_model_data %>% ungroup() %>% filter(year == 2002) %>% select(top20)) %>%
+  filter(is.na(pv) == FALSE)
+
+glimpse(df)
+str(df)
+table(df$act)
+pROC::auc(df$top20, df$pv) 
+df %>% View()
+```
+
+
+
+```{r}
+pred_auc_values20 <- numeric()
+baseline_auc_values20 <- numeric()
+
+for(i in c(2001:2016)){
+ 
+
+  model <-  glm(data = wr_model_data %>% filter(year >= 2001, year <= i),
+               family = "binomial",
+               formula = top20 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear + team_rank_lastyear +
+               league_rank_lastyear
+               )
+ 
+ df <- data.frame(pv = predict.glm(model, 
+                        newdata = wr_model_data %>% filter(year == (i + 1)),
+                        type = "response"),
+                  act = wr_model_data %>% ungroup() %>% filter(year == (i + 1)) %>% select(top20),
+                  last_year = wr_model_data %>% ungroup() %>% filter(year == (i + 1)) %>% select(top20_lastyear)) %>%
+     filter(is.na(pv) == FALSE)
+                  
+  
+ pred_auc_values20 <- c(pred_auc_values20, pROC::auc(df$top20, df$pv))
+ baseline_auc_values20 <- c(baseline_auc_values20, pROC::auc(df$top20, df$top20_lastyear))
+ 
+ rm(model, df)
+ 
+}
+
+```
+
+```{r}
+plot(pred_auc_values20, ylim = c(0.5,1.0))
+points(baseline_auc_values20, col = 'red')
+```
+
+
+
+```{r}
+pred_auc_values40 <- numeric()
+baseline_auc_values40 <- numeric()
+
+for(i in c(2001:2016)){
+ 
+
+  model <-  glm(data = wr_model_data %>% filter(year >= 2001, year <= i),
+               family = "binomial",
+               formula = top40 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear + team_rank_lastyear +
+               league_rank_lastyear
+               )
+ 
+ df <- data.frame(pv = predict.glm(model, 
+                        newdata = wr_model_data %>% filter(year == (i + 1)),
+                        type = "response"),
+                  act = wr_model_data %>% ungroup() %>% filter(year == (i + 1)) %>% select(top40),
+                  last_year = wr_model_data %>% ungroup() %>% filter(year == (i + 1)) %>% select(top40_lastyear)) %>%
+     filter(is.na(pv) == FALSE)
+                  
+  
+ pred_auc_values40 <- c(pred_auc_values40, pROC::auc(df$top40, df$pv))
+ baseline_auc_values40 <- c(baseline_auc_values40, pROC::auc(df$top40, df$top40_lastyear))
+ 
+ rm(model, df)
+ 
+}
+
+plot(pred_auc_values40, ylim = c(0.5,1.0))
+points(baseline_auc_values40, col = 'red')
+```
+
+
+```{r}
+pred_auc_values10 <- numeric()
+baseline_auc_values10 <- numeric()
+
+for(i in c(2001:2016)){
+ 
+
+  model <-  glm(data = wr_model_data %>% filter(year >= 2001, year <= i),
+               family = "binomial",
+               formula = top10 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear + team_rank_lastyear +
+               league_rank_lastyear
+               )
+ 
+ df <- data.frame(pv = predict.glm(model, 
+                        newdata = wr_model_data %>% filter(year == (i + 1)),
+                        type = "response"),
+                  act = wr_model_data %>% ungroup() %>% filter(year == (i + 1)) %>% select(top10),
+                  last_year = wr_model_data %>% ungroup() %>% filter(year == (i + 1)) %>% select(top10_lastyear)) %>%
+     filter(is.na(pv) == FALSE)
+                  
+  
+ pred_auc_values10 <- c(pred_auc_values10, pROC::auc(df$top10, df$pv))
+ baseline_auc_values10 <- c(baseline_auc_values10, pROC::auc(df$top10, df$top10_lastyear))
+ 
+ rm(model, df)
+ 
+}
+
+plot(pred_auc_values10, ylim = c(0.5,1.0))
+points(baseline_auc_values10, col = 'red')
+```
+
+
+```{r}
+pred_auc_values5 <- numeric()
+baseline_auc_values5 <- numeric()
+
+for(i in c(2001:2016)){
+ 
+
+  model <-  glm(data = wr_model_data %>% filter(year >= 2001, year <= i),
+               family = "binomial",
+               formula = top5 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear + team_rank_lastyear +
+               league_rank_lastyear
+               )
+ 
+ df <- data.frame(pv = predict.glm(model, 
+                        newdata = wr_model_data %>% filter(year == (i + 1)),
+                        type = "response"),
+                  act = wr_model_data %>% ungroup() %>% filter(year == (i + 1)) %>% select(top5),
+                  last_year = wr_model_data %>% ungroup() %>% filter(year == (i + 1)) %>% select(top5_lastyear)) %>%
+     filter(is.na(pv) == FALSE)
+                  
+  
+ pred_auc_values5 <- c(pred_auc_values5, pROC::auc(df$top5, df$pv))
+ baseline_auc_values5 <- c(baseline_auc_values5, pROC::auc(df$top5, df$top5_lastyear))
+ 
+ rm(model, df)
+ 
+}
+
+plot(pred_auc_values5, ylim = c(0.5,1.0))
+points(baseline_auc_values5, col = 'red')
+```
+
+## Predict 2018 scores...
+
+```{r}
+data2018 <- wr_model_data %>%
+  filter(year == 2017) %>%
+  mutate(experience = experience + 1,
+         age = age + 1) %>%
+  select(-top40_lastyear,-top20_lastyear,-top10_lastyear,-top5_lastyear,-team_rank_lastyear,-league_rank_lastyear) %>%
+  rename(top40_lastyear = top40,
+         top20_lastyear = top20,
+         top10_lastyear = top10,
+         top5_lastyear = top5,
+         team_rank_lastyear = team_rank,
+         league_rank_lastyear = league_rank)
+  
+model <-  glm(data = wr_model_data %>% filter(year >= 2001, year <= 2017),
+               family = "binomial",
+               formula = top20 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear + team_rank_lastyear +
+               league_rank_lastyear
+               )
+ 
+summary(model)
+ 
+df <- data.frame(pv = predict.glm(model, 
+                        newdata = data2018,
+                        type = "response"),
+                  data2018$name,
+                  data2018$league_rank_lastyear,
+                  data2018$team_rank_lastyear)
+                  
+```
+
+
+```{r}
+data2018 <- wr_model_data %>%
+  filter(year == 2017) %>%
+  mutate(experience = experience + 1,
+         age = age + 1) %>%
+  select(-top40_lastyear,-top20_lastyear,-top10_lastyear,-top5_lastyear,-team_rank_lastyear,-league_rank_lastyear) %>%
+  rename(top40_lastyear = top40,
+         top20_lastyear = top20,
+         top10_lastyear = top10,
+         top5_lastyear = top5,
+         team_rank_lastyear = team_rank,
+         league_rank_lastyear = league_rank)
+  
+model <-  glm(data = wr_model_data %>% filter(year >= 2001, year <= 2017),
+               family = "binomial",
+               formula = top10 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear + team_rank_lastyear +
+               league_rank_lastyear
+               )
+ 
+summary(model)
+ 
+df <- data.frame(pv = predict.glm(model, 
+                        newdata = data2018,
+                        type = "response"),
+                  data2018$name,
+                  data2018$league_rank_lastyear,
+                  data2018$team_rank_lastyear)
+
+View(df)
+```
+
+
+```{r}
+data2018 <- wr_model_data %>%
+  filter(year == 2017) %>%
+  mutate(experience = experience + 1,
+         age = age + 1) %>%
+  select(-top40_lastyear,-top20_lastyear,-top10_lastyear,-top5_lastyear,-team_rank_lastyear,-league_rank_lastyear) %>%
+  rename(top40_lastyear = top40,
+         top20_lastyear = top20,
+         top10_lastyear = top10,
+         top5_lastyear = top5,
+         team_rank_lastyear = team_rank,
+         league_rank_lastyear = league_rank)
+  
+model <-  glm(data = wr_model_data %>% filter(year >= 2001, year <= 2017),
+               family = "binomial",
+               formula = top5 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear + team_rank_lastyear +
+               league_rank_lastyear
+               )
+ 
+summary(model)
+ 
+df <- data.frame(pv = predict.glm(model, 
+                        newdata = data2018,
+                        type = "response"),
+                  data2018$name,
+                  data2018$league_rank_lastyear,
+                  data2018$team_rank_lastyear)
+
+View(df)
+```
+
+
+```{r}
+data2018 <- wr_model_data %>%
+  filter(year == 2017) %>%
+  mutate(experience = experience + 1,
+         age = age + 1) %>%
+  select(-top40_lastyear,-top20_lastyear,-top10_lastyear,-top5_lastyear,-team_rank_lastyear,-league_rank_lastyear) %>%
+  rename(top40_lastyear = top40,
+         top20_lastyear = top20,
+         top10_lastyear = top10,
+         top5_lastyear = top5,
+         team_rank_lastyear = team_rank,
+         league_rank_lastyear = league_rank)
+  
+model <-  glm(data = wr_model_data %>% filter(year >= 2001, year <= 2017),
+               family = "binomial",
+               formula = top40 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear + team_rank_lastyear +
+               league_rank_lastyear
+               )
+ 
+summary(model)
+ 
+df <- data.frame(pv = predict.glm(model, 
+                        newdata = data2018,
+                        type = "response"),
+                  data2018$name,
+                  data2018$league_rank_lastyear,
+                  data2018$team_rank_lastyear)
+
+View(df)
+```
+
+
+
+## XGBoost  
+
+```{r}
+?xgboost::xgboost
+
+pred_auc_values <- numeric()
+baseline_auc_values <- numeric()
+
+for(i in c(2001:2016)){
+ 
+
+  model <-  glm(data = wr_model_data %>% filter(year >= 2001, year <= i),
+               family = "binomial",
+               formula = top5 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear + team_rank_lastyear +
+               league_rank_lastyear
+               )
+ 
+ df <- data.frame(pv = predict.glm(model, 
+                        newdata = wr_model_data %>% filter(year == (i + 1)),
+                        type = "response"),
+                  act = wr_model_data %>% ungroup() %>% filter(year == (i + 1)) %>% select(top5),
+                  last_year = wr_model_data %>% ungroup() %>% filter(year == (i + 1)) %>% select(top5_lastyear)) %>%
+     filter(is.na(pv) == FALSE)
+                  
+  
+ pred_auc_values <- c(pred_auc_values, pROC::auc(df$top5, df$pv))
+ baseline_auc_values <- c(baseline_auc_values, pROC::auc(df$top5, df$top5_lastyear))
+ 
+ rm(model, df)
+ 
+}
+```
+
+
+```{r}
+labels <- c("top5","top10","top20","top40")
+etas = c(0.01,0.1,0.2,0.3)
+depths = c(1,2,4)
+trees = c(32,64,128)
+
+feature_names <- c("experience","age","top40_lastyear","top20_lastyear","top10_lastyear","top5_lastyear",
+                                         "team_rank_lastyear","league_rank_lastyear")
+
+j <- 3
+l <- 3
+k <- 1
+m <- 1
+model_data <- wr_model_data %>% 
+      ungroup() %>%
+      filter(year >= 2001, year <= 2010) %>%
+      select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear) %>%
+      as.matrix()
+
+    ix <- sample(c(0,1), dim(model_data)[1], replace = TRUE, prob = c(1/3,2/3)) 
+
+    
+    dtrain <- xgb.DMatrix(model_data[ix==1,c(feature_names)],
+                          label=model_data[ix == 1, labels[j]])
+    dtest <- xgb.DMatrix(model_data[ix==0,c(feature_names)],
+                         label=model_data[ix == 0,labels[j]])
+    watchlist <- list(train=dtrain, test=dtest)
+    model <- xgb.train(data = dtrain,
+                          max.depth = 4, 
+                          eta = 0.1,
+                          nrounds = 1000, 
+                          watchlist = watchlist,
+                          eval.metric = "logloss",
+#                          eval.metric = "auc",
+                          early_stopping_rounds = 10,
+                          gamma = 0.00001,
+                          objective = "binary:logistic",
+#                          maximize = TRUE,
+                          verbose = 1)
+str(model)
+str[2]
+?xgboost
+model
+model$best_iteration
+
+d2011 <- wr_model_data %>%
+  ungroup() %>%
+  filter(year == 2011) %>%
+        select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear) %>%
+      as.matrix()
+colnames(d2011)  
+preds <- predict(model, d2011[,c(feature_names)])
+labels[j]
+head(d2011)
+pdf <- cbind(preds,d2011[,4],wr_model_data %>% ungroup %>% filter(year == 2011) %>% select(name,league_rank))
+preds
+xgb.importance(model=model)
+class(model)
+
+pROC::auc(pdf$`d2011[, 4]`,pdf$preds)
+model$best_ntreelimit
+preds
+```
+
+
+
+
+```{r}
+i <- 2010
+j <- 1
+k <- 1
+l <- 1
+
+    model_data <- wr_model_data %>% 
+      ungroup() %>%
+      filter(year >= 2001, year <= i) %>%
+      select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear) %>%
+      as.matrix()
+
+    pred_data <- wr_model_data %>%
+                  ungroup() %>%
+                  filter(year == (i+1)) %>%
+                  select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear) %>%
+                  as.matrix()
+
+    ix <- sample(c(0,1), dim(model_data)[1], replace = TRUE, prob = c(1/3,2/3)) 
+
+    dtrain <- xgb.DMatrix(model_data[ix==1,c(feature_names)],
+                          label=model_data[ix == 1, labels[j]])
+    dtest <- xgb.DMatrix(model_data[ix==0,c(feature_names)],
+                         label=model_data[ix == 0,labels[j]])
+    watchlist <- list(train=dtrain, test=dtest)
+    
+    
+    
+    model <- xgb.train(data = dtrain,
+                            max.depth = depths[l], 
+                            eta = etas[k],
+                            nrounds = 1000, 
+                            watchlist = watchlist,
+                            eval.metric = "logloss",
+                          early_stopping_rounds = 5,
+                          gamma = 0.00001,
+                          objective = "binary:logistic",
+                          verbose = 0)
+          
+          preds <- predict(model, pred_data[,c(feature_names)])
+          pdf <- cbind(pred_data[,j+1],preds,wr_model_data %>% ungroup %>% filter(year == i+1) %>% select(name,league_rank))
+          colnames(pdf) <- c("label","preds","name","league_rank")
+          results <- bind_rows(results,c(label = labels[j],
+                                         eta = etas[k],
+                                         depths = depths[l],
+                                         auc = pROC::auc(pdf$label,pdf$preds)))    
+          counter <- counter + 1
+          print(counter)
+          rm(model,preds,pdf)  
+
+          
+          
+preds
+pdf
+
+str(
+c(label = labels[j],
+                                         eta = etas[k],
+                                         depths = depths[l],
+                                         auc = pROC::auc(pdf$label,pdf$preds))
+)
+str(results)
+```
+
+
+```{r}
+set.seed(2018)
+labels <- c("top5","top10","top20","top40")
+etas <- c(0.01,0.1,0.2,0.3)
+depths <- c(1,2,4,8)
+
+feature_names <- c("experience","age","top40_lastyear","top20_lastyear","top10_lastyear","top5_lastyear",
+                                         "team_rank_lastyear","league_rank_lastyear")
+
+
+results <- data.frame(label = as.character(NULL),
+                      eta = NULL,
+                      depth = NULL,
+                      auc = NULL,
+                      year = NULL)
+counter <- 1
+for(i in c(2001:2016)){
+  for(j in seq_along(labels)){
+    
+    model_data <- wr_model_data %>% 
+      ungroup() %>%
+      filter(year >= 2001, year <= i) %>%
+      select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear) %>%
+      as.matrix()
+
+    pred_data <- wr_model_data %>%
+                  ungroup() %>%
+                  filter(year == (i+1)) %>%
+                  select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear) %>%
+                  as.matrix()
+
+    ix <- sample(c(0,1), dim(model_data)[1], replace = TRUE, prob = c(1/3,2/3)) 
+
+    dtrain <- xgb.DMatrix(model_data[ix==1,c(feature_names)],
+                          label=model_data[ix == 1, labels[j]])
+    dtest <- xgb.DMatrix(model_data[ix==0,c(feature_names)],
+                         label=model_data[ix == 0,labels[j]])
+    watchlist <- list(train=dtrain, test=dtest)
+
+    for(k in seq_along(etas)){
+      for(l in seq_along(depths)){
+          model <- xgb.train(data = dtrain,
+                            max.depth = depths[l], 
+                            eta = etas[k],
+                            nrounds = 1000, 
+                            watchlist = watchlist,
+                            eval.metric = "logloss",
+                          early_stopping_rounds = 5,
+                          gamma = 0.00001,
+                          objective = "binary:logistic",
+                          verbose = 0)
+          
+          preds <- predict(model, pred_data[,c(feature_names)])
+          pdf <- cbind(pred_data[,j+1],preds,wr_model_data %>% ungroup %>% filter(year == i+1) %>% select(name,league_rank))
+          colnames(pdf) <- c("label","preds","name","league_rank")
+          results <- bind_rows(results,c(label = labels[j],
+                                         eta = etas[k],
+                                         depths = depths[l],
+                                         auc = pROC::auc(pdf$label,pdf$preds),
+                                         year = i))    
+          counter <- counter + 1
+          rm(model,preds,pdf)  
+      }
+    }
+    
+  }
+}
+
+```
+```{r}
+results
+```
+
+```{r}
+p <- ggplot(data = results,
+            aes(x = label, y = as.numeric(auc), shape = eta, colour = as.factor(depths)))
+p + geom_point()
+```
+
+```{r}
+results %>%
+  mutate(auc = as.numeric(auc),
+         eta = as.numeric(eta),
+         depths = as.numeric(depths)) %>%
+  group_by(label,year) %>%
+  arrange(desc(auc)) %>%
+  dplyr::slice(1)
+```
+
+```{r}
+results %>%
+  mutate(auc = as.numeric(auc),
+         eta = as.numeric(eta),
+         depths = as.numeric(depths)) %>%
+  group_by(label,year) %>%
+  arrange(desc(auc)) %>%
+  dplyr::slice(1) %>%
+  ungroup() %>%
+  group_by(label,eta,depths) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+```
+
+
+```{r}
+best <- results %>%
+  mutate(auc = as.numeric(auc),
+         eta = as.numeric(eta),
+         depths = as.numeric(depths)) %>%
+  group_by(label,year) %>%
+  arrange(desc(auc)) %>%
+  dplyr::slice(1)
+
+best
+```
+
+
+Try using data that is at most 5 years old. That way any recent trends are eliminated. 
+
+
+```{r}
+set.seed(2018)
+labels <- c("top5","top10","top20","top40")
+etas <- c(0.01,0.1,0.2,0.3)
+depths <- c(1,2,4,8)
+
+feature_names <- c("experience","age","top40_lastyear","top20_lastyear","top10_lastyear","top5_lastyear",
+                                         "team_rank_lastyear","league_rank_lastyear")
+
+
+last_five_results <- data.frame(label = as.character(NULL),
+                      eta = NULL,
+                      depth = NULL,
+                      auc = NULL,
+                      year = NULL)
+counter <- 1
+for(i in c(2001:2016)){
+  for(j in seq_along(labels)){
+    
+    model_data <- wr_model_data %>% 
+      ungroup() %>%
+      filter(year >= (i - 4), year <= i) %>%
+      select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear) %>%
+      as.matrix()
+
+    pred_data <- wr_model_data %>%
+                  ungroup() %>%
+                  filter(year == (i+1)) %>%
+                  select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear) %>%
+                  as.matrix()
+
+    ix <- sample(c(0,1), dim(model_data)[1], replace = TRUE, prob = c(1/3,2/3)) 
+
+    dtrain <- xgb.DMatrix(model_data[ix==1,c(feature_names)],
+                          label=model_data[ix == 1, labels[j]])
+    dtest <- xgb.DMatrix(model_data[ix==0,c(feature_names)],
+                         label=model_data[ix == 0,labels[j]])
+    watchlist <- list(train=dtrain, test=dtest)
+
+    for(k in seq_along(etas)){
+      for(l in seq_along(depths)){
+          model <- xgb.train(data = dtrain,
+                            max.depth = depths[l], 
+                            eta = etas[k],
+                            nrounds = 1000, 
+                            watchlist = watchlist,
+                            eval.metric = "logloss",
+                          early_stopping_rounds = 5,
+                          gamma = 0.00001,
+                          objective = "binary:logistic",
+                          verbose = 0)
+          
+          preds <- predict(model, pred_data[,c(feature_names)])
+          pdf <- cbind(pred_data[,j+1],preds,wr_model_data %>% ungroup %>% filter(year == i+1) %>% select(name,league_rank))
+          colnames(pdf) <- c("label","preds","name","league_rank")
+          results <- bind_rows(results,c(label = labels[j],
+                                         eta = etas[k],
+                                         depths = depths[l],
+                                         auc = pROC::auc(pdf$label,pdf$preds),
+                                         year = i))    
+          counter <- counter + 1
+          rm(model,preds,pdf)  
+      }
+    }
+    
+  }
+}
+```
+
+
+```{r}
+best_last5 <- results %>%
+  group_by(label,year) %>%
+  mutate(auc = as.numeric(auc)) %>%
+  arrange(desc(auc)) %>%
+  dplyr::slice(1)
+best_last5
+```
+
+```{r}
+all_model_results <-
+  best_last5 %>%
+  ungroup() %>%
+  mutate(year = as.numeric(year),
+         model = "xgb_last5") %>%
+  select(label,year,auc,model) %>%
+  bind_rows(best %>%
+              ungroup() %>%
+              mutate(year = as.numeric(year),
+                     model = "xgb") %>%
+              select(label,year,auc,model)
+  ) %>%
+  bind_rows(
+    tibble(label = rep("top5",16),
+           year = c(2001:2016),
+           auc = pred_auc_values5,
+           model = "glm")
+  ) %>%
+    bind_rows(
+    tibble(label = rep("top5",16),
+           year = c(2001:2016),
+           auc = baseline_auc_values5,
+           model = "baseline")
+  ) %>%
+    bind_rows(
+    tibble(label = rep("top10",16),
+           year = c(2001:2016),
+           auc = pred_auc_values10,
+           model = "glm")
+  ) %>%
+    bind_rows(
+    tibble(label = rep("top10",16),
+           year = c(2001:2016),
+           auc = baseline_auc_values10,
+           model = "baseline")
+  ) %>%
+    bind_rows(
+    tibble(label = rep("top20",16),
+           year = c(2001:2016),
+           auc = pred_auc_values20,
+           model = "glm")
+  ) %>%
+    bind_rows(
+    tibble(label = rep("top20",16),
+           year = c(2001:2016),
+           auc = baseline_auc_values20,
+           model = "baseline")
+  ) %>%
+    bind_rows(
+    tibble(label = rep("top40",16),
+           year = c(2001:2016),
+           auc = pred_auc_values40,
+           model = "glm")
+  ) %>%
+    bind_rows(
+    tibble(label = rep("top40",16),
+           year = c(2001:2016),
+           auc = baseline_auc_values40,
+           model = "baseline")
+  ) 
+  
+  
+```
+
+```{r}
+all_model_results %>%
+  ggplot(data = .,
+         aes(x = year,
+             y = auc,
+             group = model,
+             colour = model)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(se = F) +
+  facet_wrap(~label,ncol = 1)
+```
+
+Build a model using all data from 2017 and before...
+Use validation data to determine hyperparameters...
+Predict 2018 figures
+
+```{r}
+set.seed(2018)
+labels <- c("top5","top10","top20","top40")
+etas <- c(0.01,0.1,0.2,0.3)
+depths <- c(1,2,4,8)
+
+feature_names <- c("experience","age","top40_lastyear","top20_lastyear","top10_lastyear","top5_lastyear",
+                                         "team_rank_lastyear","league_rank_lastyear")
+
+
+models <- list()
+
+counter <- 1
+i <- 2017
+  for(j in seq_along(labels)){
+    models[[labels[j]]] <- list()
+    model_counter <- 1
+    model_data <- wr_model_data %>% 
+      ungroup() %>%
+#      filter(year >= (i - 4), year <= i) %>%
+      select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear) %>%
+      as.matrix()
+
+    ix <- sample(c(0,1), dim(model_data)[1], replace = TRUE, prob = c(1/3,2/3)) 
+
+    dtrain <- xgb.DMatrix(model_data[ix==1,c(feature_names)],
+                          label=model_data[ix == 1, labels[j]])
+    dtest <- xgb.DMatrix(model_data[ix==0,c(feature_names)],
+                         label=model_data[ix == 0,labels[j]])
+    watchlist <- list(train=dtrain, test=dtest)
+
+    for(k in seq_along(etas)){
+      for(l in seq_along(depths)){
+          models[[labels[[j]]]][[model_counter]] <- 
+            xgb.train(data = dtrain,
+                      max.depth = depths[l], 
+                      eta = etas[k],
+                      nrounds = 1000, 
+                      watchlist = watchlist,
+                      eval.metric = "logloss",
+                      early_stopping_rounds = 5,
+                      gamma = 0.00001,
+                      objective = "binary:logistic",
+                      verbose = 0)
+     
+          model_counter <- model_counter + 1
+
+      }
+    }
+    
+  }
+
+
+
+```
+
+```{r}
+
+
+
+
+models[[1]][[1]]$params$max_depth
+models[[1]][[1]]$params$eta
+models[[1]][[1]]$params$gamma
+
+models[[1]][[1]]$best_score
+
+## Extract the values of max_depth, eta, and gamma where best_score is lowest for each of the 16 models in each element.
+
+which.min(models[[1]][[1:16]]$best_score)
+
+for(i in c(1:4)){
+  best_ix <- which.min(lapply(models[[i]],"[[","best_score"))
+  print(best_ix)
+print(c(labels[[i]],
+  models[[i]][[best_ix]]$params$max_depth,
+  models[[i]][[best_ix]]$params$eta,
+  models[[i]][[best_ix]]$params$gamma))
+}
+
+
+
+
+
+```
+
+Build 2018 prediction data
+```{r}
+name <- wr_model_data %>%
+        ungroup() %>%
+        filter(year == 2017) %>%
+        select(name) %>%
+  unlist()
+name
+  
+pred_data <-
+wr_model_data %>%
+  filter(year == 2017) %>%
+  ungroup() %>%
+  mutate(age = age + 1,
+         experience = experience + 1,
+         top40_lastyear = top40,
+         top20_lastyear = top20,
+         top10_lastyear = top10,
+         top5_lastyear = top5,
+         team_rank_lastyear = team_rank,
+         league_rank_lastyear = league_rank) %>%
+  select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear) %>%
+                  as.matrix()
+pred_data %>% as.data.frame() #%>% select(name, league_rank_lastyear)
+
+head(pred_data)
+
+preds2018 <- 
+  tibble(name,
+      top5 = predict(models[[1]][[10]], pred_data[,c(feature_names)]),
+      top10 = predict(models[[2]][[10]], pred_data[,c(feature_names)]),
+      top20 = predict(models[[3]][[14]], pred_data[,c(feature_names)]),
+      top40 = predict(models[[4]][[14]], pred_data[,c(feature_names)])) %>%
+  left_join(tibble(name = name, pred_data[,13]),
+            by = "name")
+
+
+
+```
+
+
+```{r}
+head(preds2018)
+cor(preds2018[,c(2:4)])
+
+
+ggplot(data = as.tibble(preds2018),
+       aes(x = top5, y = top40,label=name)) +
+  geom_point() +
+  geom_label()
+
+```
+

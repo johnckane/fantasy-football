@@ -179,51 +179,125 @@ yoy_top %>%
 
 
 ## Benchmarks
-1) top 40 YOY will make it the next year
-2) 4 top 5, then 3 of the remaining top 10, then 3 of the remaining top 20, then 9 of the remaining top 40. 
-3) 
+
+top 40 YOY will make it the next year
+
+
+```{r}
+accuracy = purrr::map_dbl(.data$models, ~ pROC::auc(pROC::roc(response = insight::get_response(.x), predictor = stats::predict.glm(.x, stats::model.frame(.x)))))
+
+
+yoy_top %>%
+  ungroup() %>%
+  filter(is.na(top40_lastyear) == F) %>%
+  split(.$year) %>% # from base R
+  map_dbl(~pROC::auc(predictor = .$top40_lastyear, response = .$top40))
+```
+
+## Build some simple models
 
 ```{r}
 colnames(yoy_top)
 ```
 
 ```{r}
-
 yoy_top %>%
   ungroup() %>%
   filter(is.na(top40_lastyear) == F) %>%
   split(.$year) %>% # from base R
-    map(~with(.,pROC::auc(predictior = top40_lastyear, response = top40))) 
-  
-with(yoy_top,pROC::auc(predictor=top40_lastyear, response = top40))
+  map_dbl(~pROC::auc(predictor = glm(data = .,
+                                     top40 ~ 
+                                       experience + 
+                                       age + 
+                                       league_rank_lastyear  + 
+                                       top40_lastyear + 
+                                       top20_lastyear +
+                                       top10_lastyear + 
+                                       top5_lastyear,
+                                     family = 'binomial')$fitted.values,
+                     response = .$top40))
+```
+
+Who did it predict for 2018?
+
+```{r}
+m <- yoy_top %>%
+  ungroup() %>%
+  filter(year == 2018) %>%
+  glm(data = .,
+      top40 ~ 
+        experience + 
+        age + 
+        league_rank_lastyear  + 
+        top40_lastyear + 
+        top20_lastyear +
+        top10_lastyear + 
+        top5_lastyear,
+        family = 'binomial')
 
 
-map(~ lm(top40 ~ top40_lastyear, data = .)) #%>%
+df <- 
+  yoy_top %>%
+  ungroup() %>%
+  filter(year == 2018,
+         is.na(top40_lastyear) == F)
+
+glimpse(df)
+
+tibble(player = df$name,
+       pred = m$fitted.values,
+       top40 = df$league_rank) %>%
+  arrange(desc(pred))
+
+```
+
+Try a shrinkage model
+
+```{r}
+features <- c('experience','age','league_rank_lastyear','top40_lastyear','top20_lastyear','top10_lastyear','top5_lastyear')
+
+yoy_top_noNA <- yoy_top[is.na(yoy_top$top40_lastyear) == F,]
+
+lasso <- glmnet(x = as.matrix(yoy_top_noNA[,features]),
+                y = yoy_top_noNA$top40,
+                family = 'binomial',
+                alpha = 1)
+
+which.max(lasso$dev.ratio)
+lambda <- lasso$lambda[67]
 
 
-split_list <- yoy_top %>% ungroup() %>% split(.$year)
+final_lasso <- glmnet(x = as.matrix(yoy_top_noNA[,features]),
+                      y = yoy_top_noNA$top40,
+                      family = 'binomial',
+                      lambda = lambda,
+                      alpha = 1)
+?predict.glmnet
+predict(final_lasso,newx = as.matrix(yoy_top_noNA[,features]),s =lambda,type='response')
 
-output <- sapply(X = split_list, FUN = function(x) pROC::auc(predictor = x$top40_lastyear, response = x$top40))
-
-output <- sapply(X = split_list, FUN = function(x) sum(x$top40_lastyear + x$top40,na.rm = T))
-
-output <- sapply(X = split_list, FUN = function(x) with(x, pROC::auc(predictor = top40_lastyear, response = top40)))
-
-output
-
-
-?purrr::map
+pROC::auc(response = yoy_top_noNA$top40,
+          predictor = predict(final_lasso,newx = as.matrix(yoy_top_noNA[,features]),s =lambda,type='response'))
 
 
-d07 <- yoy_top %>% filter(year == 2007)
-
-pROC::auc(response = d07$top40, predictor = d07$top40_lastyear)
-
-#pROC::auc(yoy_top$top40,yoy_top$top40_lastyear)
 ```
 
 
 
-
-
+```{r}
+yoy_top %>%
+  ungroup() %>%
+  filter(is.na(top40_lastyear) == F) %>%
+  split(.$year) %>% # from base R
+  map_dbl(~pROC::auc(predictor = glm(data = .,
+                                     top40 ~ 
+                                       experience + 
+                                       age + 
+                                       league_rank_lastyear  + 
+                                       top40_lastyear + 
+                                       top20_lastyear +
+                                       top10_lastyear + 
+                                       top5_lastyear,
+                                     family = 'binomial')$fitted.values,
+                     response = .$top40))
+```
 

@@ -254,6 +254,7 @@ tibble(player = df$name,
 Try a shrinkage model
 
 ```{r}
+library(glmnet)
 features <- c('experience','age','league_rank_lastyear','top40_lastyear','top20_lastyear','top10_lastyear','top5_lastyear')
 
 yoy_top_noNA <- yoy_top[is.na(yoy_top$top40_lastyear) == F,]
@@ -276,8 +277,41 @@ final_lasso <- glmnet(x = as.matrix(yoy_top_noNA[,features]),
 predict(final_lasso,newx = as.matrix(yoy_top_noNA[,features]),s =lambda,type='response')
 
 pROC::auc(response = yoy_top_noNA$top40,
-          predictor = predict(final_lasso,newx = as.matrix(yoy_top_noNA[,features]),s =lambda,type='response'))
+          predictor = as.numeric(predict(final_lasso,
+                              newx = as.matrix(yoy_top_noNA[,features]),
+                              s =lambda,
+                              type='response')))
 
+
+```
+
+
+
+
+```{r}
+mutate(cv_mod = map(data, ~ cv.glmnet(
+    x = model.matrix(data = ., .$mpg ~ .$cyl * .$hp)[,-1],
+    y = .$mpg
+
+
+yoy_top %>%
+  filter(is.na(top40_lastyear) == F) %>%
+  split(.$year) %>%
+  map(.,
+      ~ glmnet(x = model.matrix(data = .,
+                                .$top40 ~ 
+                                  .$experience + 
+                                  .$age + 
+                                  .$league_rank_lastyear  + 
+                                  .$top40_lastyear + 
+                                  .$top20_lastyear +
+                                  .$top10_lastyear + 
+                                  .$top5_lastyear)[,-1],
+               y = .$top40,
+               family = 'binomial',
+               alpha = 1,))
+
+## Ok so this works...now I need to use it. 
 
 ```
 

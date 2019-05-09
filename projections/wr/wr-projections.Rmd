@@ -347,4 +347,32 @@ What we want to have is
 
 The alternative would be to do league rank 1-5, 6-10, 11-20, 21-40.
 
+```{r}
+wr %>%
+  filter(league_rank <= 36, year > 2010) %>%
+  mutate(group = case_when(between(league_rank,1,6) ~ 1,
+                           between(league_rank,7,12) ~ 2,
+                           between(league_rank,13,18) ~ 3,
+                           between(league_rank,19,24) ~ 4,
+                           between(league_rank,25,30) ~ 5,
+                           between(league_rank,31,36) ~ 6,
+                           TRUE ~ NA_real_)) %>%
+  ggplot(data = .,
+         aes(x = league_rank,
+             y = total_points)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth() +
+  geom_smooth(method = 'lm') +
+  geom_smooth(aes(colour = as.factor(group), group = group),method = "lm") +
+  geom_smooth(aes(colour = as.factor(group), group = group),method = "loess")
+
+```
+
+What are the point drop off values between each?
+
+For example the drop off in average points from 30 to 36 is the same as between 1 and x?
+
+```{r}
+
+```
 

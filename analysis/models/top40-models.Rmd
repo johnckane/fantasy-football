@@ -285,6 +285,16 @@ pROC::auc(response = yoy_top_noNA$top40,
 
 ```
 
+```{r}
+final_lasso <- glmnet(x = as.matrix(yoy_top_noNA[,features]),
+                      y = yoy_top_noNA$top40,
+                      family = 'binomial',
+                      lambda = lambda,
+                      alpha = 1)
+
+final_lasso$lambda[which.max(final_lasso$dev.ratio)]
+
+```
 
 
 
@@ -309,12 +319,42 @@ yoy_top %>%
                                   .$top5_lastyear)[,-1],
                y = .$top40,
                family = 'binomial',
-               alpha = 1,))
+               alpha = 1,)) %>%
+  map(.,
+      ~.$lambda[which.max(.$dev.ratio)])
 
-## Ok so this works...now I need to use it. 
+## Ok so this works...now I need to use it. Let's see if we can find the best model 
 
 ```
 
+```{r}
+# write a function to fit a glmnet, find the best value of alpha and lambda then fit again with those values
+
+yoy_top %>%
+  filter(is.na(top40_lastyear) == F) %>%
+  split(.$year) %>%
+  map(., ~pROC::auc(response = .$top40,
+                    predictor = as.numeric(
+                      predict(
+                        glmnet(x = model.matrix(data = .,
+                                                .$top40 ~
+                                                  .$experience + 
+                                                  .$age + 
+                                                  .$league_rank_lastyear  + 
+                                                  .$top40_lastyear + 
+                                                  .$top20_lastyear +
+                                                  .$top10_lastyear + 
+                                                  .$top5_lastyear)[,-1],
+                               y = .$top40,
+                               family = 'binomial',
+                               alpha = 1)),
+                      newx = as.matrix(.[,features]),
+                      s=lambda.1se,
+                      type='response')))
+```
+```{r}
+features
+```
 
 
 ```{r}

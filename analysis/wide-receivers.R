@@ -104,6 +104,8 @@ wr_offense %>%
   arrange(desc(total_points)) %>%
   mutate(league_rank = row_number())
 
+
+
 save(wr, file = "/home/john/projects/fantasy-football/data/analysis-data/wr.Rda")
 
 head(wr)

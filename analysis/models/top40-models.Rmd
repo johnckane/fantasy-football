@@ -294,16 +294,13 @@ final_lasso <- glmnet(x = as.matrix(yoy_top_noNA[,features]),
 
 final_lasso$lambda[which.max(final_lasso$dev.ratio)]
 
+final_lasso$lambda.1se
+
 ```
 
 
 
 ```{r}
-mutate(cv_mod = map(data, ~ cv.glmnet(
-    x = model.matrix(data = ., .$mpg ~ .$cyl * .$hp)[,-1],
-    y = .$mpg
-
-
 yoy_top %>%
   filter(is.na(top40_lastyear) == F) %>%
   split(.$year) %>%
@@ -327,6 +324,7 @@ yoy_top %>%
 
 ```
 
+
 ```{r}
 # write a function to fit a glmnet, find the best value of alpha and lambda then fit again with those values
 
@@ -347,16 +345,28 @@ yoy_top %>%
                                                   .$top5_lastyear)[,-1],
                                y = .$top40,
                                family = 'binomial',
-                               alpha = 1)),
-                      newx = as.matrix(.[,features]),
-                      s=lambda.1se,
-                      type='response')))
-```
-```{r}
-features
+                               alpha = 1),
+                       newx = as.matrix(.[,features]),
+                      s=cv.glmnet(x = model.matrix(data = .,
+                                                .$top40 ~
+                                                  .$experience + 
+                                                  .$age + 
+                                                  .$league_rank_lastyear  + 
+                                                  .$top40_lastyear + 
+                                                  .$top20_lastyear +
+                                                  .$top10_lastyear + 
+                                                  .$top5_lastyear)[,-1],
+                               y = .$top40,
+                               family = 'binomial',
+                               alpha = 1)$lambda.1se,
+                      type='response'
+                      )
+                      )
+                    )
+      )
 ```
 
-
+## Now compare glm to glmnet
 ```{r}
 yoy_top %>%
   ungroup() %>%
@@ -372,6 +382,73 @@ yoy_top %>%
                                        top10_lastyear + 
                                        top5_lastyear,
                                      family = 'binomial')$fitted.values,
-                     response = .$top40))
+                     response = .$top40)) -> glm_out
+
+yoy_top %>%
+  filter(is.na(top40_lastyear) == F) %>%
+  split(.$year) %>%
+  map_dbl(., ~pROC::auc(response = .$top40,
+                    predictor = as.numeric(
+                      predict(
+                        glmnet(x = model.matrix(data = .,
+                                                .$top40 ~
+                                                  .$experience + 
+                                                  .$age + 
+                                                  .$league_rank_lastyear  + 
+                                                  .$top40_lastyear + 
+                                                  .$top20_lastyear +
+                                                  .$top10_lastyear + 
+                                                  .$top5_lastyear)[,-1],
+                               y = .$top40,
+                               family = 'binomial',
+                               alpha = 1),
+                       newx = as.matrix(.[,features]),
+                      s=cv.glmnet(x = model.matrix(data = .,
+                                                .$top40 ~
+                                                  .$experience + 
+                                                  .$age + 
+                                                  .$league_rank_lastyear  + 
+                                                  .$top40_lastyear + 
+                                                  .$top20_lastyear +
+                                                  .$top10_lastyear + 
+                                                  .$top5_lastyear)[,-1],
+                               y = .$top40,
+                               family = 'binomial',
+                               alpha = 1)$lambda.1se,
+                      type='response'
+                      )
+                      )
+                    )
+      ) -> glmnet_out
 ```
+
+```{r}
+tibble(glm_out, glmnet_out) %>%
+  mutate(glmnet_pct_better = glmnet_out/glm_out)
+```
+
+According to this, glmnet is only better once! Why would glm do so poorly?
+
+For one, it's not predicting on "unseen" data. I think we need to do that. 
+
+Can we use purrr to do that even?
+
+Steps to build models iteratively...
+
+1. glm
+2. glmnet
+3. xgboost
+
+We also need to incorporate more featuers...
+Want to incorporate:
+1. QB features
+2. First 8 / Last 8 games topX
+
+Want to know...
+1. How deep until you capture all you need to capture -- this becomes the input set for predicting who will be in each tier
+of the top
+
+Need to fix...the database!
+
+
 

@@ -1,7 +1,15 @@
-library(RMySQL)
+#library(RMySQL)
 library(tidyverse)
 library(lubridate)
-mydb = dbConnect(MySQL(), user='root', dbname='armchair_analysis', host='localhost')
+#mydb = dbConnect(MySQL(), user='john', dbname='armchair_analysis', host='localhost')
+library(DBI)
+library(pool)
+pool <- dbPool(drv = RMySQL::MySQL(), 
+               dbname = "armchair_analysis", 
+               host = "localhost", 
+               username = "john", 
+               port = 3306, 
+               unix.sock = "/var/run/mysqld/mysqld.sock")
 team_name_abbr_lookup <- data.frame(abbr = c('ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN',
                                              'DET','GB' ,'HOU','IND','JAC','KC' ,'LA' ,'MIA','MIN','NE',
                                              'NO' ,'NYG','NYJ','OAK','PHI','PIT','SD' ,'SEA','SF' , 'STL',
@@ -12,7 +20,7 @@ team_name_abbr_lookup <- data.frame(abbr = c('ARI','ATL','BAL','BUF','CAR','CHI'
                                              'Steelers','Chargers','Seahawks','49ers','Rams','Buccaneers','Titans','Redskins'),
                                     stringsAsFactors = FALSE)
 
-offense <- dbGetQuery(con = mydb,
+offense <- dbGetQuery(con = pool,
                       "SELECT 
                       a.player
                       , b.wk as week
@@ -23,7 +31,7 @@ offense <- dbGetQuery(con = mydb,
                       JOIN game as b on a.gid = b.gid") 
 
 
-two_point <- dbGetQuery(con = mydb,
+two_point <- dbGetQuery(con = pool,
                         "select 
                         a.*
                         , b.gid
@@ -71,7 +79,7 @@ offense5 <- offense4 %>%
   rename(points = fp)
 
 # Need names, teams, positions
-wrs <- dbGetQuery(con = mydb,
+wrs <- dbGetQuery(con = pool,
                   "select 
                       a.player
                       , a.fname
@@ -84,8 +92,41 @@ wrs <- dbGetQuery(con = mydb,
 wr_offense <- inner_join(wrs,offense5,by='player') %>% mutate(name = paste0(fname," ",lname),
                                                               experience = year - start,
                                                               age = year - year(as_date(dob)))
-save(wr_offense, file = "/home/john/fantasy-football/data/analysis-data/wr_offense.Rda")
+save(wr_offense, file = "/home/john/projects/fantasy-football/data/analysis-data/wr_offense.Rda")
 head(wr_offense)
+
+
+wr_first8_ranks <-
+wr_offense %>%
+  filter(week <= 8) %>%
+  group_by(player,name,year,team,experience,age) %>%
+  summarise(total_points = sum(points)) %>%
+  ungroup() %>%
+  group_by(team,year) %>%
+  arrange(desc(total_points)) %>%
+  mutate(team_rank_first8 = row_number()) %>%
+  ungroup() %>%
+  group_by(year) %>%
+  arrange(desc(total_points)) %>%
+  mutate(league_rank_first8 = row_number()) %>%
+  select(-total_points)
+
+wr_last8_ranks <-
+  wr_offense %>%
+  filter(week >  8,
+         week <= 16) %>%
+  group_by(player,name,year,team,experience,age) %>%
+  summarise(total_points = sum(points)) %>%
+  ungroup() %>%
+  group_by(team,year) %>%
+  arrange(desc(total_points)) %>%
+  mutate(team_rank_last8 = row_number()) %>%
+  ungroup() %>%
+  group_by(year) %>%
+  arrange(desc(total_points)) %>%
+  mutate(league_rank_last8 = row_number()) %>%
+  select(-total_points)
+
 
 
 
@@ -102,9 +143,11 @@ wr_offense %>%
   ungroup() %>%
   group_by(year) %>%
   arrange(desc(total_points)) %>%
-  mutate(league_rank = row_number())
+  mutate(league_rank = row_number()) %>%
+  left_join(wr_first8_ranks, by = c('player','name','year','team','experience','age')) %>%
+  left_join(wr_last8_ranks, by = c('player','name','year','team','experience','age'))
 
-
+head(wr)
 
 save(wr, file = "/home/john/projects/fantasy-football/data/analysis-data/wr.Rda")
 

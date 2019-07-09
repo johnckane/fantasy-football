@@ -1,0 +1,204 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+load("/home/john/projects/fantasy-football/data/analysis-data/wr.Rda")
+```
+
+
+
+Objective of this document:
+
+We want to build a two-stage model.
+Stage 1: predict whether a player will be a top-36 player this coming season
+Stage 2: Given they are likely to be a top-36 player, what is the probability of being tier 1, tier 2, etc.
+
+```{r}
+yoy_top <- 
+wr %>%
+  filter(is.na(league_rank) == FALSE) %>%
+  mutate(top40 = ifelse(league_rank <= 40,1,0),
+         top20 = ifelse(league_rank <= 20,1,0),
+         top10 = ifelse(league_rank <= 10,1,0),
+         top5  = ifelse(league_rank <= 5,1,0)) %>%
+  arrange(player,year) %>%
+  group_by(player) %>%
+  mutate(top40_lastyear = ifelse(lag(year) == year - 1, lag(top40),NA),
+         top20_lastyear = ifelse(lag(year) == year - 1, lag(top20),NA),
+         top10_lastyear = ifelse(lag(year) == year - 1, lag(top10),NA),
+         top5_lastyear  = ifelse(lag(year) == year - 1, lag(top5),NA),
+         team_rank_lastyear = ifelse(lag(year) == year - 1,lag(team_rank),NA),
+         league_rank_lastyear = ifelse(lag(year) == year - 1,lag(league_rank),NA))
+```
+
+
+
+```{r}
+summary(yoy_top$year)
+```
+
+The first year we can model is 2001. 
+
+```{r}
+yoy_top %>%
+  ungroup() %>%
+  filter(is.na(top40_lastyear) == F) %>%
+  split(.$year) %>% # from base R
+  map_dbl(~pROC::auc(predictor = glm(data = .,
+                                     top40 ~ 
+                                       experience + 
+                                       age + 
+                                       league_rank_lastyear  + 
+                                       top40_lastyear + 
+                                       top20_lastyear +
+                                       top10_lastyear + 
+                                       top5_lastyear,
+                                     family = 'binomial')$fitted.values,
+                     response = .$top40))
+```
+
+
+```{r}
+load("/home/john/projects/fantasy-football/data/analysis-data/wr.Rda")
+load("/home/john/projects/fantasy-football/data/analysis-data/wr_offense.Rda")
+wr_model_data <- 
+wr %>%
+  filter(is.na(league_rank) == FALSE) %>%
+  mutate(top40 = ifelse(league_rank <= 40,1,0),
+         top20 = ifelse(league_rank <= 20,1,0),
+         top10 = ifelse(league_rank <= 10,1,0),
+         top5  = ifelse(league_rank <= 5,1,0)) %>%
+  arrange(player,year) %>%
+  group_by(player) %>%
+  mutate(top40_lastyear = ifelse(lag(year) == year - 1, lag(top40),NA),
+         top20_lastyear = ifelse(lag(year) == year - 1, lag(top20),NA),
+         top10_lastyear = ifelse(lag(year) == year - 1, lag(top10),NA),
+         top5_lastyear  = ifelse(lag(year) == year - 1, lag(top5),NA),
+         team_rank_lastyear = ifelse(lag(year) == year - 1,lag(team_rank),NA),
+         league_rank_lastyear = ifelse(lag(year) == year - 1,lag(league_rank),NA))
+```
+
+
+```{r}
+summary(wr_model_data$year)
+```
+
+
+```{r}
+max_rns <- numeric()
+year <- numeric()
+
+for(i in c(2001:2016)){
+
+    model_data <- wr_model_data %>% 
+      ungroup() %>%
+      filter(year >= 2001, year <= i) %>%
+      select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear)
+    
+    model <- glm(data = wr_model_data,
+                 family = "binomial",
+                 formula = top40 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear +
+                   team_rank_lastyear + league_rank_lastyear)
+
+    
+    pred_data <- wr_model_data %>%
+                  ungroup() %>%
+                  filter(year == (i+1))
+    
+    
+    pred_data$pred_values <- predict.glm(model, newdata = pred_data, type = "response")
+    
+    
+    max_rn <-
+      pred_data %>%
+      arrange(desc(pred_values)) %>%
+      mutate(rn = row_number()) %>%
+      filter(league_rank <= 40) %>%
+      summarise(max_rn = max(rn)) %>%
+      pull(max_rn)
+
+    max_rns <- c(max_rns,max_rn)
+    year <- c(year,i)
+    
+    rm(model_data,model,pred_data,max_rn)
+
+}
+```
+
+
+```{r}
+plot(year,max_rns,type = 'l')
+```
+
+```{r}
+summary(max_rns)
+```
+
+```{r}
+cbind(year,max_rns)
+```
+
+This is not very good. 
+
+Try a tree based method instead of LM
+```{r}
+library(rpart)
+?rpart
+?predict.rpart
+```
+
+```{r}
+max_rns <- numeric()
+year <- numeric()
+for(i in c(2001:2016)){
+
+    tree_data <- wr_model_data %>% 
+      ungroup() %>%
+      filter(year >= 2001, year <= i) %>%
+      select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear)
+    
+    tree <- rpart(data = wr_model_data,
+                 method = "class",
+                 formula = top40 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear +
+                   team_rank_lastyear + league_rank_lastyear,
+                 control = rpart.control(cp = .00001))
+
+    
+    pred_data <- wr_model_data %>%
+                  ungroup() %>%
+                  filter(year == (i+1))
+    
+    
+    pred_data$pred_values <- predict(tree, newdata = pred_data, type = "prob")[,2]
+    
+    
+    max_rn <-
+      pred_data %>%
+      arrange(desc(pred_values)) %>%
+      mutate(rn = row_number()) %>%
+      filter(league_rank <= 40) %>%
+      summarise(max_rn = max(rn)) %>%
+      pull(max_rn)
+
+    max_rns <- c(max_rns,max_rn)
+    year <- c(year,i)
+    
+    rm(tree_data,tree,pred_data,max_rn)
+}
+```
+
+```{r}
+cbind(year,max_rns)
+```
+
+```{r}
+plot(year,max_rns)
+```
+
+
+

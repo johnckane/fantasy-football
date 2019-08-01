@@ -254,3 +254,21 @@ ggplot(data = fp_percent_top10 %>% filter(pct_ptd >= 0, pct_ptd <= 1,
   geom_smooth()
 ```
 
+Look at pass td vs. pass yards
+
+
+```{r}
+glimpse(fp_percent)
+```
+
+```{r}
+ggplot(data = fp_percent_top10,
+       aes(x = total_py,
+           y = total_tdp,
+           group = top10,
+           shape = as.factor(top10),
+           colour = total_fp)) +
+  geom_point() +
+  geom_smooth()
+```
+

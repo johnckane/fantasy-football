@@ -1,0 +1,218 @@
+---
+title: "Clustering Cost and Production by ADP"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(DBI)
+library(pool)
+```
+
+
+There are three data sources to do this:
+1. Cost (Draft data)
+2. Production (From Armchair Analysis DB)
+3. ADP data (scraped from the web)
+
+Draft data
+```{r}
+load(file = "/home/john/projects/fantasy-football/data/bn-draft-data/draft_data.Rda")
+```
+
+Production Data
+```{r}
+pool <- dbPool(drv = RMySQL::MySQL(), 
+               dbname = "armchair_analysis", 
+               host = "localhost", 
+               username = "john", 
+               port = 3306, 
+               unix.sock = "/var/run/mysqld/mysqld.sock")
+team_name_abbr_lookup <- data.frame(abbr = c('ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN',
+                                             'DET','GB' ,'HOU','IND','JAC','KC' ,'LA' ,'MIA','MIN','NE',
+                                             'NO' ,'NYG','NYJ','OAK','PHI','PIT','SD' ,'SEA','SF' , 'STL',
+                                             'TB','TEN','WAS'),
+                                    name = c('Cardinals','Falcons','Ravens','Bills','Panthers','Bears','Bengals','Browns',
+                                             'Cowboys','Broncos','Lions','Packers','Texans','Colts','Jaguars','Chiefs','Rams',
+                                             'Dolphins','Vikings','Patriots','Saints','Giants','Jets','Raiders','Eagles',
+                                             'Steelers','Chargers','Seahawks','49ers','Rams','Buccaneers','Titans','Redskins'),
+                                    stringsAsFactors = FALSE)
+
+offense <- dbGetQuery(con = pool,
+                      "SELECT 
+                      a.player
+                      , b.wk as week
+                      , a.year
+                      , a.team
+                      , 0.04*py + -2*ints + 4*tdp + 0.1*ry + 0.1*recy + 6*tdr + 6*tdrec -2*fuml +6*tdret as fp
+                      ,py
+                      ,ints
+                      ,tdp
+                      ,ry
+                      ,recy
+                      ,tdr
+                      ,tdrec
+                      ,fuml
+                      ,tdret
+                      FROM offense as a
+                      JOIN game as b on a.gid = b.gid") 
+
+
+two_point <- dbGetQuery(con = pool,
+                        "select 
+                        a.*
+                        , b.gid
+                        , c.seas as year
+                        , c.wk as week 
+                        from conv as a 
+                        join play as b on a.pid = b.pid
+                        join game as c on b.gid = c.gid where conv = 1")
+
+
+rush_two_point <- two_point %>%
+  filter(bc != "")
+pass_two_point <- two_point %>%
+  filter(psr != "")
+two_point %>%
+  filter(bc == "", psr == "") # forget this one
+
+
+offense2 <-
+  offense %>%
+  left_join(., 
+            pass_two_point %>% group_by(week,year,psr) %>% summarise(count = n()), 
+            by = c("year","week","player" = "psr")) %>% 
+  mutate(fp = ifelse(is.na(count) == FALSE, fp + 2*count, fp)) %>%
+  select(-count)
+
+offense3 <-
+  offense2 %>%
+  left_join(.,
+            pass_two_point %>% group_by(week,year,trg) %>% summarise(count= n()),
+            by = c("year","week","player" = "trg")) %>%
+  mutate(fp = ifelse(is.na(count) == FALSE, fp+2*count, fp)) %>%
+  select(-count)
+
+offense4 <-
+  offense3 %>%
+  left_join(.,
+            rush_two_point %>% group_by(week,year,bc) %>% summarise(count = n()),
+            by = c("year","week","player" = "bc")) %>%
+  mutate(fp = ifelse(is.na(count) == FALSE, fp+2*count, fp)) %>%
+  select(-count)
+
+offense5 <-
+  offense4 %>%
+  filter(week <= 16) %>%
+  group_by(player,year) %>%
+  summarise(total_fp = sum(fp),
+            gp = n()) %>%
+  filter(gp >= 14)
+```
+
+
+
+ADP Data
+```{r}
+load("/home/john/projects/fantasy-football/data/adp-data/adp.Rda")
+```
+
+
+
+Need a Dataset with
+|player|year|pos|pos_adp|cost|fp|
+
+
+```{r}
+glimpse(adp)
+```
+
+```{r}
+glimpse(draft_data)
+```
+
+```{r}
+glimpse(offense5)
+```
+
+```{r}
+cost_adp_prod <-
+offense5 %>%
+  select(player,year,total_fp) %>%
+  inner_join(draft_data %>% select(year,player_code,player,keeper,pos,adj_value),
+             by = c("player" = "player_code","year")) %>%
+  inner_join(adp %>% select(year,player_code,pos_adp),
+             by = c("player" = "player_code","year"))
+```
+
+
+
+```{r}
+cost_adp_prod %>%
+  filter(pos == 'QB', keeper == 0) %>%
+  ggplot(data = .,
+         aes(x = adj_value, y = total_fp,label = pos_adp)) +
+  geom_label()
+```
+
+
+```{r}
+cost_adp_prod %>%
+  filter(pos == 'RB', keeper == 0) %>%
+  ggplot(data = .,
+         aes(x = adj_value, y = total_fp,label = pos_adp)) +
+  geom_label()
+```
+
+
+```{r}
+cost_adp_prod %>%
+  filter(pos == 'WR', keeper == 0) %>%
+  ggplot(data = .,
+         aes(x = adj_value, y = total_fp,label = pos_adp)) +
+  geom_label()
+```
+
+```{r}
+cost_adp_prod %>%
+  filter(pos == 'TE', keeper == 0) %>%
+  ggplot(data = .,
+         aes(x = adj_value, y = total_fp,label = pos_adp)) +
+  geom_label()
+```
+
+```{r}
+table(cost_adp_prod$pos)
+```
+
+
+## Do some clustering 
+```{r}
+?kmeans
+```
+
+
+```{r}
+cost_adp_prod %>% ungroup() %>% filter(pos == 'QB', keeper == 0) %>% select(pos_adp,total_fp,adj_value) %>% as.matrix()
+```
+
+```{r}
+k1 <- kmeans(cost_adp_prod %>% ungroup() %>% filter(pos == 'QB', keeper == 0) %>% select(pos_adp,total_fp,adj_value),
+             centers = 5,
+             nstart = 20)
+```
+
+```{r}
+k1
+```
+
+```{r}
+
+for(i in 1:10){
+  k <- kmeans(cost_adp_prod %>% ungroup() %>% filter(pos == 'QB', keeper == 0) %>% select(pos_adp,total_fp,adj_value),
+             centers = i,
+             nstart = 20)
+}
+```
+

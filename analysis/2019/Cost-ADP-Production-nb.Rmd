@@ -106,9 +106,10 @@ offense5 <-
   offense4 %>%
   filter(week <= 16) %>%
   group_by(player,year) %>%
-  summarise(total_fp = sum(fp),
+  summarise(ppg= mean(fp),
+            ppg_sd = sd(fp),
             gp = n()) %>%
-  filter(gp >= 14)
+  filter(gp >= 10)
 ```
 
 
@@ -139,7 +140,7 @@ glimpse(offense5)
 ```{r}
 cost_adp_prod <-
 offense5 %>%
-  select(player,year,total_fp) %>%
+  select(player,year,ppg,ppg_sd) %>%
   inner_join(draft_data %>% select(year,player_code,player,keeper,pos,adj_value),
              by = c("player" = "player_code","year")) %>%
   inner_join(adp %>% select(year,player_code,pos_adp),
@@ -152,7 +153,7 @@ offense5 %>%
 cost_adp_prod %>%
   filter(pos == 'QB', keeper == 0) %>%
   ggplot(data = .,
-         aes(x = adj_value, y = total_fp,label = pos_adp)) +
+         aes(x = adj_value, y = ppg,label = pos_adp)) +
   geom_label()
 ```
 
@@ -161,7 +162,7 @@ cost_adp_prod %>%
 cost_adp_prod %>%
   filter(pos == 'RB', keeper == 0) %>%
   ggplot(data = .,
-         aes(x = adj_value, y = total_fp,label = pos_adp)) +
+         aes(x = adj_value, y = ppg,label = pos_adp)) +
   geom_label()
 ```
 
@@ -170,7 +171,7 @@ cost_adp_prod %>%
 cost_adp_prod %>%
   filter(pos == 'WR', keeper == 0) %>%
   ggplot(data = .,
-         aes(x = adj_value, y = total_fp,label = pos_adp)) +
+         aes(x = adj_value, y = ppg,label = pos_adp)) +
   geom_label()
 ```
 
@@ -178,12 +179,40 @@ cost_adp_prod %>%
 cost_adp_prod %>%
   filter(pos == 'TE', keeper == 0) %>%
   ggplot(data = .,
-         aes(x = adj_value, y = total_fp,label = pos_adp)) +
+         aes(x = adj_value, y = ppg,label = pos_adp)) +
   geom_label()
 ```
 
 ```{r}
 table(cost_adp_prod$pos)
+```
+
+center and scale ppg, ppg_sd, and cost
+```{r}
+head(cost_adp_prod)
+```
+
+Remove keepers and Andre Johnson
+```{r}
+cost_adp_prod_cleaned <- cost_adp_prod %>% filter(keeper == 0, adj_value < 200)
+```
+
+
+```{r}
+to_scale_vars <- cost_adp_prod_cleaned[,c(3,4,8)]
+to_scale_vars_scaled <- as.data.frame(scale(to_scale_vars))
+colnames(to_scale_vars_scaled) 
+colnames(to_scale_vars_scaled) <- c('ppg_scaled','ppg_sd_scaled','adj_value_scaled')
+colMeans(to_scale_vars_scaled)
+var(to_scale_vars_centered[,3])
+```
+
+```{r}
+cost_adp_prod_scaled_cleaned <- bind_cols(cost_adp_prod_cleaned,to_scale_vars_scaled)
+```
+
+```{r}
+head(cost_adp_prod_scaled_cleaned)
 ```
 
 
@@ -194,11 +223,11 @@ table(cost_adp_prod$pos)
 
 
 ```{r}
-cost_adp_prod %>% ungroup() %>% filter(pos == 'QB', keeper == 0) %>% select(pos_adp,total_fp,adj_value) %>% as.matrix()
-```
-
-```{r}
-k1 <- kmeans(cost_adp_prod %>% ungroup() %>% filter(pos == 'QB', keeper == 0) %>% select(pos_adp,total_fp,adj_value),
+qb_data <- cost_adp_prod_scaled_cleaned %>% 
+  ungroup() %>% 
+  filter(pos == 'QB', keeper == 0) 
+colnames(qb_data)
+k1 <- kmeans(qb_data[,10:12],
              centers = 5,
              nstart = 20)
 ```
@@ -208,11 +237,64 @@ k1
 ```
 
 ```{r}
+qb_data$cluster <- k1$cluster
+k1$betweenss/k1$totss
+```
 
-for(i in 1:10){
-  k <- kmeans(cost_adp_prod %>% ungroup() %>% filter(pos == 'QB', keeper == 0) %>% select(pos_adp,total_fp,adj_value),
-             centers = i,
-             nstart = 20)
-}
+```{r}
+qb_data2 <-
+qb_data %>%
+  group_by(cluster) %>%
+  summarise(avg_ppg = mean(ppg),
+            avg_ppg_sd = mean(ppg_sd),
+            avg_cost = mean(adj_value),
+            sd_adp = sd(pos_adp)) %>%
+  arrange(desc(avg_ppg)) %>%
+  mutate(new_cluster = row_number())
+head(qb_data2)
+```
+
+
+```{r}
+qb_data3 <-
+qb_data %>%
+  left_join(.,qb_data2, by = "cluster") %>%
+  group_by(new_cluster,pos_adp,avg_ppg) %>%
+  summarise(count = n()) %>%
+  arrange(new_cluster,pos_adp)
+```
+
+
+```{r}
+total_adp <-
+  qb_data %>%
+  group_by(pos_adp) %>%
+  summarise(total_pos_adp = n())
+```
+
+
+```{r}
+total_cluster_size <-
+  qb_data3 %>%
+  ungroup() %>%
+  group_by(new_cluster) %>%
+  summarise(total_new_cluster = sum(count))
+total_cluster_size
+```
+
+```{r}
+qb_data4 <-
+qb_data3 %>%
+  left_join(total_adp, by = "pos_adp") %>%
+  left_join(total_cluster_size, by = "new_cluster") %>%
+  mutate(pct_of_cluster = count/total_new_cluster,
+         pct_of_adp = count/total_pos_adp)
+```
+
+```{r}
+qb_data4 %>%
+  group_by(pos_adp) %>%
+  arrange(desc(pct_of_adp)) %>%
+  slice(1)
 ```
 

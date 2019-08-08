@@ -145,6 +145,7 @@ offense5 %>%
              by = c("player" = "player_code","year")) %>%
   inner_join(adp %>% select(year,player_code,pos_adp),
              by = c("player" = "player_code","year"))
+save(cost_adp_prod,file="/home/john/projects/fantasy-football/data/clustering-data/cost_adp_prod.Rda")
 ```
 
 
@@ -209,6 +210,8 @@ var(to_scale_vars_centered[,3])
 
 ```{r}
 cost_adp_prod_scaled_cleaned <- bind_cols(cost_adp_prod_cleaned,to_scale_vars_scaled)
+save(cost_adp_prod_scaled_cleaned,
+     file = "/home/john/projects/fantasy-football/data/clustering-data/cost_adp_prod_scaled_cleaned.Rda")
 ```
 
 ```{r}
@@ -296,5 +299,33 @@ qb_data4 %>%
   group_by(pos_adp) %>%
   arrange(desc(pct_of_adp)) %>%
   slice(1)
+```
+
+```{r}
+explain_adp <- lm(data = qb_data4, pos_adp ~ new_cluster)
+summary(explain_adp)
+explain_adp
+```
+
+```{r}
+library(rpart)
+explain_adp <- rpart(data = qb_data4, pos_adp ~ new_cluster, method = "anova")
+explain_adp
+summary(explain_adp)
+```
+
+```{r}
+rsq.rpart(explain_adp)
+```
+
+```{r}
+tmp <- printcp(explain_adp)
+rsq.val <- 1-tmp[,c(3,4)]  
+rsq.val[nrow(rsq.val),]
+```
+
+```{r}
+tmp
+rsq.val
 ```
 

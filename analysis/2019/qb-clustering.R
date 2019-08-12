@@ -8,7 +8,7 @@ data <- cost_adp_prod_scaled_cleaned %>%
   filter(pos == 'QB') %>%
   filter(pos_adp <= 32)
 
-max_clusters <- 10
+max_clusters <- 8
 
 output <- matrix(0,max_clusters-1,3)
 
@@ -35,7 +35,7 @@ for(i in c(2:max_clusters)){
   cluster_data3 <-
     cluster_data %>%
     left_join(.,cluster_data2, by = "cluster") %>%
-    group_by(new_cluster,pos_adp,avg_ppg) %>%
+    group_by(new_cluster,pos_adp,avg_ppg,avg_ppg_sd,avg_cost) %>%
     summarise(count = n()) %>%
     arrange(new_cluster,pos_adp)
   
@@ -81,8 +81,6 @@ for(i in c(2:max_clusters)){
 }
 
 
-rm(data)
-
 output_df <- data.frame(num_clusters = output[,1],
                         var_explained = output[,2],
                         adp_explained = output[,3])
@@ -118,10 +116,9 @@ cluster_data2 <-
 cluster_data3 <-
   cluster_data %>%
   left_join(.,cluster_data2, by = "cluster") %>%
-  group_by(new_cluster,pos_adp,avg_ppg) %>%
+  group_by(new_cluster,pos_adp,avg_ppg,avg_ppg_sd,avg_cost) %>%
   summarise(count = n()) %>%
   arrange(new_cluster,pos_adp)
-
 
 total_adp <-
   cluster_data %>%

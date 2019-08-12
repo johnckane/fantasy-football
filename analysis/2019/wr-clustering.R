@@ -8,7 +8,7 @@ data <- cost_adp_prod_scaled_cleaned %>%
   filter(pos == 'RB') %>%
   filter(pos_adp <= 36)
 
-max_clusters <- 20
+max_clusters <- 9
 
 output <- matrix(0,max_clusters-1,3)
 
@@ -94,11 +94,11 @@ ggplot(data = output_df,
   geom_label()
 
 
-## Looks like 8 is the way to go...
+## Looks like 7 is the way to go...
 
 cluster_data <- data
 cluster_object <- kmeans(data[,10:12],
-                         centers = 9,
+                         centers = 7,
                          nstart = 20)
 
 cluster_data$cluster <- cluster_object$cluster

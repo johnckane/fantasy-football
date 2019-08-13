@@ -2,11 +2,12 @@
 library(tidyverse)
 library(rpart)
 ## Load the data
-load("/home/john/projects/fantasy-football/data/clustering-data/cost_adp_prod_scaled_cleaned.Rda")
+load("/home/john/projects/fantasy-football/data/clustering-data/imputed_cost_adp_prod_scaled.Rda")
 ## Filter on position
-data <- cost_adp_prod_scaled_cleaned %>% 
-  filter(pos == 'RB') %>%
-  filter(pos_adp <= 36)
+data <- 
+  imputed_cost_adp_prod_scaled %>% 
+  filter(position == 'RB') %>%
+  filter(pos_adp <= 45)
 
 max_clusters <- 20
 
@@ -27,6 +28,7 @@ for(i in c(2:max_clusters)){
     summarise(avg_ppg = mean(ppg),
               avg_ppg_sd = mean(ppg_sd),
               avg_cost = mean(adj_value),
+              sd_cost = sd(adj_value),
               sd_adp = sd(pos_adp),
               total_obs = n()) %>%
     arrange(desc(avg_ppg)) %>%
@@ -35,7 +37,7 @@ for(i in c(2:max_clusters)){
   cluster_data3 <-
     cluster_data %>%
     left_join(.,cluster_data2, by = "cluster") %>%
-    group_by(new_cluster,pos_adp,avg_ppg) %>%
+    group_by(new_cluster,pos_adp,avg_ppg,avg_cost,sd_cost) %>%
     summarise(count = n()) %>%
     arrange(new_cluster,pos_adp)
   
@@ -94,11 +96,11 @@ ggplot(data = output_df,
   geom_label()
 
 
-## Looks like 8 is the way to go...
+## Looks like 7 is the way to go...
 
 cluster_data <- data
 cluster_object <- kmeans(data[,10:12],
-                         centers = 9,
+                         centers = 7,
                          nstart = 20)
 
 cluster_data$cluster <- cluster_object$cluster
@@ -148,3 +150,6 @@ cluster_data4 %>%
   ungroup() %>%
   arrange(new_cluster,pos_adp) %>%
   View()
+
+ggplot(data=cluster_data4, aes(pos_adp))+
+  geom_bar(aes(fill=as.factor(new_cluster)), position="fill")

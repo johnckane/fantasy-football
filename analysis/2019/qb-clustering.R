@@ -2,10 +2,11 @@
 library(tidyverse)
 library(rpart)
 ## Load the data
-load("/home/john/projects/fantasy-football/data/clustering-data/cost_adp_prod_scaled_cleaned.Rda")
+load("/home/john/projects/fantasy-football/data/clustering-data/imputed_cost_adp_prod_scaled.Rda")
 ## Filter on position
-data <- cost_adp_prod_scaled_cleaned %>% 
-  filter(pos == 'QB') %>%
+data <- 
+  imputed_cost_adp_prod_scaled %>% 
+  filter(position == 'QB') %>%
   filter(pos_adp <= 32)
 
 max_clusters <- 8
@@ -92,22 +93,24 @@ ggplot(data = output_df,
   geom_label()
 
 
-## Looks like 8 is the way to go...
+## Looks like 7 is the way to go...
 
 cluster_data <- data
 cluster_object <- kmeans(data[,10:12],
-                         centers = 8,
+                         centers = 7,
                          nstart = 20)
 
 cluster_data$cluster <- cluster_object$cluster
 var_explained <- cluster_object$betweenss/cluster_object$totss
 var_explained
 cluster_data2 <-
+  cluster_data2 <-
   cluster_data %>%
   group_by(cluster) %>%
   summarise(avg_ppg = mean(ppg),
             avg_ppg_sd = mean(ppg_sd),
             avg_cost = mean(adj_value),
+            sd_cost = sd(adj_value),
             sd_adp = sd(pos_adp),
             total_obs = n()) %>%
   arrange(desc(avg_ppg)) %>%
@@ -116,10 +119,9 @@ cluster_data2 <-
 cluster_data3 <-
   cluster_data %>%
   left_join(.,cluster_data2, by = "cluster") %>%
-  group_by(new_cluster,pos_adp,avg_ppg,avg_ppg_sd,avg_cost) %>%
+  group_by(new_cluster,pos_adp,avg_ppg,avg_cost,sd_cost) %>%
   summarise(count = n()) %>%
   arrange(new_cluster,pos_adp)
-
 total_adp <-
   cluster_data %>%
   group_by(pos_adp) %>%
@@ -137,6 +139,7 @@ cluster_data4 <-
   left_join(total_cluster_size, by = "new_cluster") %>%
   mutate(pct_of_cluster = count/total_new_cluster,
          pct_of_adp = count/total_pos_adp)
+head(cluster_data4)
 
 cluster_data4 %>%
   group_by(pos_adp) %>%
@@ -145,3 +148,6 @@ cluster_data4 %>%
   ungroup() %>%
   arrange(new_cluster,pos_adp) %>%
   View()
+
+ggplot(data=cluster_data4, aes(pos_adp))+
+  geom_bar(aes(fill=as.factor(new_cluster)), position="fill")

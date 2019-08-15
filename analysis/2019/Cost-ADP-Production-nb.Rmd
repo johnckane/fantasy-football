@@ -109,7 +109,23 @@ offense5 <-
   summarise(ppg= mean(fp),
             ppg_sd = sd(fp),
             gp = n()) %>%
-  filter(gp >= 10)
+  filter(gp >= 4)
+
+
+positions <- dbGetQuery(con = pool,
+                  "SELECT 
+                   a.player
+                  ,a.fname
+                  ,a.lname
+                  ,a.dob
+                  ,a.start
+                  ,a.pos1 as position
+                  FROM player AS a")
+
+offense6 <- offense5 %>%
+  left_join(positions, by = "player")
+
+
 ```
 
 
@@ -139,15 +155,26 @@ glimpse(offense5)
 
 ```{r}
 cost_adp_prod <-
-offense5 %>%
-  select(player,year,ppg,ppg_sd) %>%
-  inner_join(draft_data %>% select(year,player_code,player,keeper,pos,adj_value),
-             by = c("player" = "player_code","year")) %>%
+offense6 %>%
+  select(player,year,position,ppg,ppg_sd) %>%
   inner_join(adp %>% select(year,player_code,pos_adp),
-             by = c("player" = "player_code","year"))
+             by = c("player" = "player_code","year")) %>%
+  left_join(draft_data %>% select(year,player_code,player,keeper,adj_value),
+             by = c("player" = "player_code","year")) 
+
 save(cost_adp_prod,file="/home/john/projects/fantasy-football/data/clustering-data/cost_adp_prod.Rda")
 ```
 
+```{r}
+glimpse(draft_data)
+```
+
+
+
+
+```{r}
+glimpse(offense5)
+```
 
 
 ```{r}
@@ -194,18 +221,32 @@ head(cost_adp_prod)
 ```
 
 Remove keepers and Andre Johnson
+
 ```{r}
-cost_adp_prod_cleaned <- cost_adp_prod %>% filter(keeper == 0, adj_value < 200)
+sum(is.na(cost_adp_prod$adj_value))
+```
+
+
+
+```{r}
+cost_adp_prod_cleaned <- 
+  cost_adp_prod %>% 
+  filter(keeper == 0, adj_value < 200) %>%
+  mutate(adj_value = ifelse(is.na(adj_value),0,adj_value))
+```
+
+```{r}
+
 ```
 
 
 ```{r}
-to_scale_vars <- cost_adp_prod_cleaned[,c(3,4,8)]
+to_scale_vars <- cost_adp_prod_cleaned[,c(3,4,9)]
 to_scale_vars_scaled <- as.data.frame(scale(to_scale_vars))
 colnames(to_scale_vars_scaled) 
 colnames(to_scale_vars_scaled) <- c('ppg_scaled','ppg_sd_scaled','adj_value_scaled')
 colMeans(to_scale_vars_scaled)
-var(to_scale_vars_centered[,3])
+#var(to_scale_vars_centered[,3])
 ```
 
 ```{r}
@@ -219,113 +260,173 @@ head(cost_adp_prod_scaled_cleaned)
 ```
 
 
-## Do some clustering 
+### Make a version of the data where I impute the averaages cost for adp for all kept values
+
+
+Stil exclude Andre Johnson...
+
 ```{r}
-?kmeans
+cost_adp_prod_no_keepers <- 
+  cost_adp_prod %>% 
+  filter((is.na(keeper) | keeper == 0), (is.na(adj_value) | adj_value < 200),year > 2010) %>%
+  mutate(adj_value = ifelse(is.na(adj_value),0,adj_value))
+
+sum(is.na(cost_adp_prod$adj_value))
+sum(is.na(cost_adp_prod_no_keepers$adj_value))
+sum(is.na(cost_adp_prod$keeper))
+sum(cost_adp_prod_no_keepers$adj_value == 0)
+
+adp_pos_average_cost <-
+  cost_adp_prod_no_keepers %>%
+  group_by(position,pos_adp) %>%
+  summarise(mean_cost = mean(adj_value),
+            num_zero = sum(adj_value == 0))
+
+
+```
+
+
+
+
+```{r}
+cost_adp_prod_keepers <- 
+  cost_adp_prod %>%
+  filter(keeper == 1, year >= 2010) %>%
+  left_join(adp_pos_average_cost, by = c('pos_adp','position')) %>%
+  mutate(adj_value = mean_cost)
+  
+```
+
+```{r}
+which(is.na(cost_adp_prod_keepers$adj_value))
+```
+
+```{r}
+cost_adp_prod_keepers[67,]
+```
+
+
+#6 RBs are not available...take the average of #s 5 and 7...
+
+```{r}
+cost_adp_prod_no_keepers %>%
+  filter(position == 'QB', pos_adp %in% c(24,26))
+```
+
+```{r}
+# use a weighted average
+(3*(80+2/3) + 4*(63+2/3)) /7
+```
+
+```{r}
+cost_adp_prod_keepers2 <-
+  cost_adp_prod_keepers %>%
+  mutate(adj_value = ifelse((position == 'QB' & pos_adp == 25),(18+1)/2,adj_value))
+```
+
+
+
+```{r}
+colnames(cost_adp_prod_no_keepers)
+```
+
+```{r}
+colnames(cost_adp_prod_keepers)
 ```
 
 
 ```{r}
-qb_data <- cost_adp_prod_scaled_cleaned %>% 
-  ungroup() %>% 
-  filter(pos == 'QB', keeper == 0) 
-colnames(qb_data)
-k1 <- kmeans(qb_data[,10:12],
-             centers = 5,
-             nstart = 20)
+imputed_cost_adp_prod <- 
+  bind_rows(cost_adp_prod_no_keepers,
+            cost_adp_prod_keepers2 %>%
+              select(1,2,3,4,5,6,7,8,9))
 ```
 
 ```{r}
-k1
-```
-
-```{r}
-qb_data$cluster <- k1$cluster
-k1$betweenss/k1$totss
-```
-
-```{r}
-qb_data2 <-
-qb_data %>%
-  group_by(cluster) %>%
-  summarise(avg_ppg = mean(ppg),
-            avg_ppg_sd = mean(ppg_sd),
-            avg_cost = mean(adj_value),
-            sd_adp = sd(pos_adp)) %>%
-  arrange(desc(avg_ppg)) %>%
-  mutate(new_cluster = row_number())
-head(qb_data2)
+colnames(imputed_cost_adp_prod)
 ```
 
 
+
 ```{r}
-qb_data3 <-
-qb_data %>%
-  left_join(.,qb_data2, by = "cluster") %>%
-  group_by(new_cluster,pos_adp,avg_ppg) %>%
-  summarise(count = n()) %>%
-  arrange(new_cluster,pos_adp)
+to_scale_vars <- imputed_cost_adp_prod[,c(4,5,9)]
+to_scale_vars_scaled <- as.data.frame(scale(to_scale_vars))
+head(to_scale_vars_scaled)
+lapply(to_scale_vars_scaled, function(x) sum(is.na(x)))
+which(is.na(to_scale_vars_scaled[,3]))
+#imputed_cost_adp_prod[c(788,834,836,847,850),]
+colnames(to_scale_vars_scaled) 
+colnames(to_scale_vars_scaled) <- c('ppg_scaled','ppg_sd_scaled','adj_value_scaled')
+colMeans(to_scale_vars_scaled)
+var(to_scale_vars_scaled[,3])
+
+imputed_cost_adp_prod_scaled <- bind_cols(imputed_cost_adp_prod,to_scale_vars_scaled)
+head(imputed_cost_adp_prod_scaled)
+save(cost_adp_prod_scaled_cleaned,
+     file = "/home/john/projects/fantasy-football/data/clustering-data/imputed_cost_adp_prod_scaled.Rda")
+```
+
+## Plots of Production vs. Cost
+ 
+```{r}
+ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'QB'),
+       aes(x = pos_adp, y = ppg)) +
+  geom_point() +
+  geom_smooth()
 ```
 
 
 ```{r}
-total_adp <-
-  qb_data %>%
-  group_by(pos_adp) %>%
-  summarise(total_pos_adp = n())
+ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'RB'),
+       aes(x = pos_adp, y = ppg)) +
+  geom_point() +
+  geom_smooth()
+```
+
+```{r}
+ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'WR'),
+       aes(x = pos_adp, y = ppg)) +
+  geom_point() +
+  geom_smooth()
+```
+
+```{r}
+ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'TE'),
+       aes(x = pos_adp, y = ppg)) +
+  geom_point() +
+  geom_smooth()
 ```
 
 
 ```{r}
-total_cluster_size <-
-  qb_data3 %>%
-  ungroup() %>%
-  group_by(new_cluster) %>%
-  summarise(total_new_cluster = sum(count))
-total_cluster_size
+ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'QB'),
+       aes(x = adj_value, y = ppg)) +
+  geom_point() +
+  geom_smooth()
+```
+
+
+```{r}
+ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'RB'),
+       aes(x = adj_value, y = ppg)) +
+  geom_point() +
+  geom_smooth()
 ```
 
 ```{r}
-qb_data4 <-
-qb_data3 %>%
-  left_join(total_adp, by = "pos_adp") %>%
-  left_join(total_cluster_size, by = "new_cluster") %>%
-  mutate(pct_of_cluster = count/total_new_cluster,
-         pct_of_adp = count/total_pos_adp)
+ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'WR'),
+       aes(x = adj_value, y = ppg)) +
+  geom_point() +
+  geom_smooth()
 ```
 
-```{r}
-qb_data4 %>%
-  group_by(pos_adp) %>%
-  arrange(desc(pct_of_adp)) %>%
-  slice(1)
-```
 
 ```{r}
-explain_adp <- lm(data = qb_data4, pos_adp ~ new_cluster)
-summary(explain_adp)
-explain_adp
+ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'TE'),
+       aes(x = adj_value, y = ppg)) +
+  geom_point() +
+  geom_smooth()
 ```
 
-```{r}
-library(rpart)
-explain_adp <- rpart(data = qb_data4, pos_adp ~ new_cluster, method = "anova")
-explain_adp
-summary(explain_adp)
-```
 
-```{r}
-rsq.rpart(explain_adp)
-```
-
-```{r}
-tmp <- printcp(explain_adp)
-rsq.val <- 1-tmp[,c(3,4)]  
-rsq.val[nrow(rsq.val),]
-```
-
-```{r}
-tmp
-rsq.val
-```
 

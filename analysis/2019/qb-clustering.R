@@ -15,7 +15,7 @@ output <- matrix(0,max_clusters-1,3)
 
 for(i in c(2:max_clusters)){
   cluster_data <- data
-  cluster_object <- kmeans(data[,10:12],
+  cluster_object <- kmeans(data[,c(10,11,12)],
                            centers = i,
                            nstart = 20)
   
@@ -93,18 +93,17 @@ ggplot(data = output_df,
   geom_label()
 
 
-## Looks like 7 is the way to go...
+## Looks like 8 
 
 cluster_data <- data
 cluster_object <- kmeans(data[,10:12],
-                         centers = 7,
+                         centers = 8,
                          nstart = 20)
 
 cluster_data$cluster <- cluster_object$cluster
 var_explained <- cluster_object$betweenss/cluster_object$totss
 var_explained
 cluster_data2 <-
-  cluster_data2 <-
   cluster_data %>%
   group_by(cluster) %>%
   summarise(avg_ppg = mean(ppg),
@@ -149,5 +148,11 @@ cluster_data4 %>%
   arrange(new_cluster,pos_adp) %>%
   View()
 
-ggplot(data=cluster_data4, aes(pos_adp))+
-  geom_bar(aes(fill=as.factor(new_cluster)), position="fill")
+ggplot(data=cluster_data4, aes(x=pos_adp,y=pct_of_adp))+
+  geom_jitter(width = 0) +
+  geom_label(aes(label = new_cluster))
+
+
+cluster_data3 %>%
+  arrange(pos_adp,new_cluster) %>%
+  View()

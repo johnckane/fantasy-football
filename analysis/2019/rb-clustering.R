@@ -9,7 +9,7 @@ data <-
   filter(position == 'RB') %>%
   filter(pos_adp <= 45)
 
-max_clusters <- 20
+max_clusters <- 15
 
 output <- matrix(0,max_clusters-1,3)
 
@@ -96,11 +96,11 @@ ggplot(data = output_df,
   geom_label()
 
 
-## Looks like 7 is the way to go...
+## Looks like 9 is the way to go...
 
 cluster_data <- data
 cluster_object <- kmeans(data[,10:12],
-                         centers = 7,
+                         centers = 9,
                          nstart = 20)
 
 cluster_data$cluster <- cluster_object$cluster
@@ -112,6 +112,7 @@ cluster_data2 <-
   summarise(avg_ppg = mean(ppg),
             avg_ppg_sd = mean(ppg_sd),
             avg_cost = mean(adj_value),
+            sd_cost = sd(adj_value),
             sd_adp = sd(pos_adp),
             total_obs = n()) %>%
   arrange(desc(avg_ppg)) %>%
@@ -120,7 +121,7 @@ cluster_data2 <-
 cluster_data3 <-
   cluster_data %>%
   left_join(.,cluster_data2, by = "cluster") %>%
-  group_by(new_cluster,pos_adp,avg_ppg) %>%
+  group_by(new_cluster,pos_adp,avg_ppg,avg_ppg_sd,avg_cost,sd_cost) %>%
   summarise(count = n()) %>%
   arrange(new_cluster,pos_adp)
 
@@ -151,5 +152,5 @@ cluster_data4 %>%
   arrange(new_cluster,pos_adp) %>%
   View()
 
-ggplot(data=cluster_data4, aes(pos_adp))+
+ggplot(data=cluster_data4, aes(pos_adp)) +
   geom_bar(aes(fill=as.factor(new_cluster)), position="fill")

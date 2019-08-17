@@ -2,10 +2,10 @@
 library(tidyverse)
 library(rpart)
 ## Load the data
-load("/home/john/projects/fantasy-football/data/clustering-data/imputed_cost_adp_prod_scaled.Rda")
+load("/home/john/projects/fantasy-football/data/clustering-data/cost_adp_prod_cleaned_scaled.Rda")
 ## Filter on position
 data <- 
-  imputed_cost_adp_prod_scaled %>% 
+  cost_adp_prod_cleaned_scaled %>% 
   filter(position == 'WR') %>%
   filter(pos_adp <= 45)
 
@@ -15,7 +15,7 @@ output <- matrix(0,max_clusters-1,3)
 
 for(i in c(2:max_clusters)){
   cluster_data <- data
-  cluster_object <- kmeans(data[,10:12],
+  cluster_object <- kmeans(data[,c(10,12)],
                            centers = i,
                            nstart = 20)
   
@@ -98,7 +98,7 @@ ggplot(data = output_df,
 ## Looks like 15 is the way to go...
 
 cluster_data <- data
-cluster_object <- kmeans(data[,10:12],
+cluster_object <- kmeans(data[,c(10,12)],
                          centers = 15,
                          nstart = 20)
 

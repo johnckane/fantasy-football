@@ -140,24 +140,14 @@ load("/home/john/projects/fantasy-football/data/adp-data/adp.Rda")
 Need a Dataset with
 |player|year|pos|pos_adp|cost|fp|
 
-
-```{r}
-glimpse(adp)
-```
-
-```{r}
-glimpse(draft_data)
-```
-
-```{r}
-glimpse(offense5)
-```
-
 ```{r}
 cost_adp_prod <-
 offense6 %>%
+  ungroup() %>%
   select(player,year,position,ppg,ppg_sd) %>%
-  inner_join(adp %>% select(year,player_code,pos_adp),
+  inner_join(adp %>% 
+               ungroup() %>%
+               select(year,player_code,pos_adp),
              by = c("player" = "player_code","year")) %>%
   left_join(draft_data %>% select(year,player_code,player,keeper,adj_value),
              by = c("player" = "player_code","year")) 
@@ -165,21 +155,21 @@ offense6 %>%
 save(cost_adp_prod,file="/home/john/projects/fantasy-football/data/clustering-data/cost_adp_prod.Rda")
 ```
 
-```{r}
-glimpse(draft_data)
-```
-
-
-
-
-```{r}
-glimpse(offense5)
-```
 
 
 ```{r}
 cost_adp_prod %>%
-  filter(pos == 'QB', keeper == 0) %>%
+  filter(position == 'QB', keeper == 0) %>%
+  ggplot(data = .,
+         aes(x = adj_value, y = ppg,label = pos_adp)) +
+  geom_label()
+```
+
+
+
+```{r}
+cost_adp_prod %>%
+  filter(position == 'RB', keeper == 0) %>%
   ggplot(data = .,
          aes(x = adj_value, y = ppg,label = pos_adp)) +
   geom_label()
@@ -188,16 +178,7 @@ cost_adp_prod %>%
 
 ```{r}
 cost_adp_prod %>%
-  filter(pos == 'RB', keeper == 0) %>%
-  ggplot(data = .,
-         aes(x = adj_value, y = ppg,label = pos_adp)) +
-  geom_label()
-```
-
-
-```{r}
-cost_adp_prod %>%
-  filter(pos == 'WR', keeper == 0) %>%
+  filter(position == 'WR', keeper == 0) %>%
   ggplot(data = .,
          aes(x = adj_value, y = ppg,label = pos_adp)) +
   geom_label()
@@ -205,171 +186,132 @@ cost_adp_prod %>%
 
 ```{r}
 cost_adp_prod %>%
-  filter(pos == 'TE', keeper == 0) %>%
+  filter(position == 'TE', keeper == 0) %>%
   ggplot(data = .,
          aes(x = adj_value, y = ppg,label = pos_adp)) +
   geom_label()
 ```
 
 ```{r}
-table(cost_adp_prod$pos)
+table(cost_adp_prod$position)
 ```
 
-center and scale ppg, ppg_sd, and cost
-```{r}
-head(cost_adp_prod)
-```
-
-Remove keepers and Andre Johnson
 
 ```{r}
 sum(is.na(cost_adp_prod$adj_value))
 ```
 
+```{r}
+sum(is.na(cost_adp_prod$keeper))
+```
+
+
+
+What is the first year of adjusted values?
+
+```{r}
+with(cost_adp_prod,plot(year,adj_value))
+```
+
+```{r}
+table(adp$year)
+table(draft_data$year)
+table(offense6$year)
+```
 
 
 ```{r}
 cost_adp_prod_cleaned <- 
   cost_adp_prod %>% 
-  filter(keeper == 0, adj_value < 200) %>%
+  filter(keeper == 0 | is.na(keeper), 
+         (is.na(adj_value) | adj_value < 200),
+         year >= 2010) %>%
   mutate(adj_value = ifelse(is.na(adj_value),0,adj_value))
+save(cost_adp_prod_cleaned,file="/home/john/projects/fantasy-football/data/clustering-data/cost_adp_prod_cleaned.Rda")
 ```
 
 ```{r}
-
-```
-
-
-```{r}
-to_scale_vars <- cost_adp_prod_cleaned[,c(3,4,9)]
-to_scale_vars_scaled <- as.data.frame(scale(to_scale_vars))
-colnames(to_scale_vars_scaled) 
-colnames(to_scale_vars_scaled) <- c('ppg_scaled','ppg_sd_scaled','adj_value_scaled')
-colMeans(to_scale_vars_scaled)
-#var(to_scale_vars_centered[,3])
+head(cost_adp_prod_cleaned)
 ```
 
 ```{r}
-cost_adp_prod_scaled_cleaned <- bind_cols(cost_adp_prod_cleaned,to_scale_vars_scaled)
-save(cost_adp_prod_scaled_cleaned,
-     file = "/home/john/projects/fantasy-football/data/clustering-data/cost_adp_prod_scaled_cleaned.Rda")
+sum(cost_adp_prod_cleaned$adj_value == 0)
+```
+
+
+
+# scale variables by position
+```{r}
+qb_data <- cost_adp_prod_cleaned %>% filter(position == 'QB')
+qb_to_scale <- qb_data[,c(4,5,9)]
+qb_to_scale_scaled <- as.data.frame(scale(qb_to_scale))
+colnames(qb_to_scale_scaled) <- c('ppg_scaled','ppg_sd_scaled','adj_value_scaled')
+colMeans(qb_to_scale_scaled)
+var(qb_to_scale_scaled[,3])
+qb_data_scaled <- bind_cols(qb_data,qb_to_scale_scaled)
 ```
 
 ```{r}
-head(cost_adp_prod_scaled_cleaned)
-```
-
-
-### Make a version of the data where I impute the averaages cost for adp for all kept values
-
-
-Stil exclude Andre Johnson...
-
-```{r}
-cost_adp_prod_no_keepers <- 
-  cost_adp_prod %>% 
-  filter((is.na(keeper) | keeper == 0), (is.na(adj_value) | adj_value < 200),year > 2010) %>%
-  mutate(adj_value = ifelse(is.na(adj_value),0,adj_value))
-
-sum(is.na(cost_adp_prod$adj_value))
-sum(is.na(cost_adp_prod_no_keepers$adj_value))
-sum(is.na(cost_adp_prod$keeper))
-sum(cost_adp_prod_no_keepers$adj_value == 0)
-
-adp_pos_average_cost <-
-  cost_adp_prod_no_keepers %>%
-  group_by(position,pos_adp) %>%
-  summarise(mean_cost = mean(adj_value),
-            num_zero = sum(adj_value == 0))
-
-
-```
-
-
-
-
-```{r}
-cost_adp_prod_keepers <- 
-  cost_adp_prod %>%
-  filter(keeper == 1, year >= 2010) %>%
-  left_join(adp_pos_average_cost, by = c('pos_adp','position')) %>%
-  mutate(adj_value = mean_cost)
-  
+rb_data <- cost_adp_prod_cleaned %>% filter(position == 'RB')
+rb_to_scale <- rb_data[,c(4,5,9)]
+rb_to_scale_scaled <- as.data.frame(scale(rb_to_scale))
+colnames(rb_to_scale_scaled) <- c('ppg_scaled','ppg_sd_scaled','adj_value_scaled')
+colMeans(rb_to_scale_scaled)
+var(rb_to_scale_scaled[,3])
+rb_data_scaled <- bind_cols(rb_data,rb_to_scale_scaled)
 ```
 
 ```{r}
-which(is.na(cost_adp_prod_keepers$adj_value))
+wr_data <- cost_adp_prod_cleaned %>% filter(position == 'WR')
+wr_to_scale <- wr_data[,c(4,5,9)]
+wr_to_scale_scaled <- as.data.frame(scale(wr_to_scale))
+colnames(wr_to_scale_scaled) <- c('ppg_scaled','ppg_sd_scaled','adj_value_scaled')
+colMeans(wr_to_scale_scaled)
+var(wr_to_scale_scaled[,1])
+wr_data_scaled <- bind_cols(wr_data,wr_to_scale_scaled)
 ```
 
 ```{r}
-cost_adp_prod_keepers[67,]
+te_data <- cost_adp_prod_cleaned %>% filter(position == 'TE')
+te_to_scale <- te_data[,c(4,5,9)]
+te_to_scale_scaled <- as.data.frame(scale(te_to_scale))
+colnames(te_to_scale_scaled) <- c('ppg_scaled','ppg_sd_scaled','adj_value_scaled')
+colMeans(te_to_scale_scaled)
+var(te_to_scale_scaled[,3])
+te_data_scaled <- bind_cols(te_data,te_to_scale_scaled)
 ```
 
 
-#6 RBs are not available...take the average of #s 5 and 7...
-
+# put it back together
 ```{r}
-cost_adp_prod_no_keepers %>%
-  filter(position == 'QB', pos_adp %in% c(24,26))
-```
-
-```{r}
-# use a weighted average
-(3*(80+2/3) + 4*(63+2/3)) /7
-```
-
-```{r}
-cost_adp_prod_keepers2 <-
-  cost_adp_prod_keepers %>%
-  mutate(adj_value = ifelse((position == 'QB' & pos_adp == 25),(18+1)/2,adj_value))
+cost_adp_prod_cleaned_scaled <- bind_rows(qb_data_scaled,
+                                  rb_data_scaled,
+                                  wr_data_scaled,
+                                  te_data_scaled)
+save(cost_adp_prod_cleaned_scaled,file="/home/john/projects/fantasy-football/data/clustering-data/cost_adp_prod_cleaned_scaled.Rda")
 ```
 
 
-
-```{r}
-colnames(cost_adp_prod_no_keepers)
-```
-
-```{r}
-colnames(cost_adp_prod_keepers)
-```
-
-
-```{r}
-imputed_cost_adp_prod <- 
-  bind_rows(cost_adp_prod_no_keepers,
-            cost_adp_prod_keepers2 %>%
-              select(1,2,3,4,5,6,7,8,9))
-```
-
-```{r}
-colnames(imputed_cost_adp_prod)
-```
-
-
-
-```{r}
-to_scale_vars <- imputed_cost_adp_prod[,c(4,5,9)]
-to_scale_vars_scaled <- as.data.frame(scale(to_scale_vars))
-head(to_scale_vars_scaled)
-lapply(to_scale_vars_scaled, function(x) sum(is.na(x)))
-which(is.na(to_scale_vars_scaled[,3]))
-#imputed_cost_adp_prod[c(788,834,836,847,850),]
-colnames(to_scale_vars_scaled) 
-colnames(to_scale_vars_scaled) <- c('ppg_scaled','ppg_sd_scaled','adj_value_scaled')
-colMeans(to_scale_vars_scaled)
-var(to_scale_vars_scaled[,3])
-
-imputed_cost_adp_prod_scaled <- bind_cols(imputed_cost_adp_prod,to_scale_vars_scaled)
-head(imputed_cost_adp_prod_scaled)
-save(cost_adp_prod_scaled_cleaned,
-     file = "/home/john/projects/fantasy-football/data/clustering-data/imputed_cost_adp_prod_scaled.Rda")
-```
 
 ## Plots of Production vs. Cost
  
 ```{r}
-ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'QB'),
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'QB'),
+       aes(x = pos_adp, y = ppg)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'RB'),
+       aes(x = pos_adp, y = ppg)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'WR'),
+       aes(x = pos_adp, y = ppg)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'TE'),
        aes(x = pos_adp, y = ppg)) +
   geom_point() +
   geom_smooth()
@@ -377,56 +319,73 @@ ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'QB'),
 
 
 ```{r}
-ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'RB'),
-       aes(x = pos_adp, y = ppg)) +
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'QB'),
+       aes(x = adj_value, y = ppg)) +
   geom_point() +
   geom_smooth()
-```
 
-```{r}
-ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'WR'),
-       aes(x = pos_adp, y = ppg)) +
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'RB'),
+       aes(x = adj_value, y = ppg)) +
   geom_point() +
   geom_smooth()
-```
 
-```{r}
-ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'TE'),
-       aes(x = pos_adp, y = ppg)) +
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'WR'),
+       aes(x = adj_value, y = ppg)) +
   geom_point() +
   geom_smooth()
-```
 
-
-```{r}
-ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'QB'),
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'TE'),
        aes(x = adj_value, y = ppg)) +
   geom_point() +
   geom_smooth()
 ```
 
 
+
+## Now adj_value by pos_adp
 ```{r}
-ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'RB'),
-       aes(x = adj_value, y = ppg)) +
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'QB'),
+       aes(x = pos_adp, y = adj_value)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'RB'),
+       aes(x = pos_adp, y = adj_value)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'WR'),
+       aes(x = pos_adp, y = adj_value)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'TE'),
+       aes(x = pos_adp, y = adj_value)) +
   geom_point() +
   geom_smooth()
 ```
 
+Finally, sd by adp
+
 ```{r}
-ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'WR'),
-       aes(x = adj_value, y = ppg)) +
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'QB'),
+       aes(x = pos_adp, y = ppg_sd)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'RB'),
+       aes(x = pos_adp, y =  ppg_sd)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'WR'),
+       aes(x = pos_adp, y =  ppg_sd)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(data = cost_adp_prod_cleaned %>% filter(position == 'TE'),
+       aes(x = pos_adp, y =  ppg_sd)) +
   geom_point() +
   geom_smooth()
 ```
-
-
-```{r}
-ggplot(data = cost_adp_prod_scaled_cleaned %>% filter(pos == 'TE'),
-       aes(x = adj_value, y = ppg)) +
-  geom_point() +
-  geom_smooth()
-```
-
-
 

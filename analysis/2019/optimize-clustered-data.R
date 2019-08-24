@@ -122,7 +122,7 @@ c_keeper <- c(rep(1,10),rep(0,164))
 direction <- c('<=','==','==','==','==','<=')
 
 
-rhs <- c(290,2,2,1,3,2)
+rhs <- c(292,2,2,1,3,2)
 constraints <- matrix(rbind(c_salary,
                             c_qb,
                             c_rb,

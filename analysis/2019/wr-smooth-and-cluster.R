@@ -24,7 +24,6 @@ wr_smoothed_data$smoothed_ppg <- predict(object = loess(data = wr_data, ppg ~ po
 wr_smoothed_data
 
 # remove NA and one negative value for cost
-wr_smoothed_data <- wr_smoothed_data[-c(29:32),]
 wr_smoothed_data
 
 
@@ -201,3 +200,15 @@ wr_cluster_data <-
 
 save(wr_cluster_data,
      file = "/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/wr_cluster_data.Rda")
+
+
+wr_single_obs_per_cluster <-
+  cluster_data3 %>% group_by(new_cluster) %>% slice(1) %>% rename(cluster = new_cluster) %>% select(cluster,avg_ppg,avg_cost)
+wr_single_obs_per_cluster
+
+save(wr_single_obs_per_cluster,
+     file = "/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/wr_single_obs_per_cluster.Rda")
+cluster_data3 %>% print(n = 60)
+
+
+

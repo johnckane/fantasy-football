@@ -251,5 +251,10 @@ cluster_data3 %>%
 save(qb_cluster_data,
      file = "/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/qb_cluster_data.Rda")
 
+qb_single_obs_per_cluster <-
+  cluster_data3 %>% group_by(new_cluster) %>% slice(1) %>% rename(cluster = new_cluster) %>% select(cluster,avg_ppg,avg_cost)
+
+save(qb_single_obs_per_cluster,
+     file = "/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/qb_single_obs_per_cluster.Rda")
 
 

@@ -76,7 +76,7 @@ keeper_data <- data.frame(new_cluster = numeric(),
 
 keeper_clusters <- rep(0,10)
 keeper_avg_cost <- c(19,20,51,105,7,45,26,9,15,24)
-keeper_avg_ppg <- c(16.1,13.7,12.8,13.8,8.24,9.88,8.51,7.16,8.68,6.34)
+keeper_avg_ppg <- c(16.1,13.7,11.5,13.8,8.4,9.9,7.7,7.2,8.4,6.3)
 keeper_player <- c('Goff','Darnold','Cook','Johnson','Williams','Kelce','Drake','Barber','Kupp','Sanders')
 keeper_position <- c('QB','QB','RB','RB','WR','TE','RB','RB','WR','WR')
 
@@ -238,6 +238,11 @@ head(no_te_clustered_w_keeper)
 objective <- no_te_clustered_w_keeper$avg_ppg
 
 
+
+
+
+
+
 ## Lay out the constraints ##
 # Total salary row
 c_salary <- no_te_clustered_w_keeper$avg_cost
@@ -279,3 +284,59 @@ solved$solution
 no_te_clustered_w_keeper$in_solution = solved$solution
 
 no_te_clustered_w_keeper %>% filter(in_solution == 1) 
+
+
+
+## what if no cluster 1 RBs are there?
+no_top_rb <-
+  clustered_w_keeper %>%
+  filter(!(player %in% c('RB-1-1','RB-1-2','RB-1-3')))
+
+no_top_rb$in_solution <- NULL
+
+head(no_top_rb)
+
+objective <- no_top_rb$avg_ppg
+
+
+## Lay out the constraints ##
+# Total salary row
+c_salary <- no_top_rb$avg_cost
+# 2 QBs
+c_qb <- ifelse(no_top_rb$position=='QB',1,0)
+# 2 RBs 
+c_rb <- ifelse(no_top_rb$position=='RB',1,0)
+# 1 TE 
+c_te <- ifelse(no_top_rb$position=='TE',1,0)
+# 3 WRs 
+c_wr <- ifelse(no_top_rb$position=='WR',1,0)
+# 2 keepers
+c_keeper <- c(rep(1,10),rep(0,165))
+
+direction <- c('<=','==','==','==','==','<=')
+
+
+rhs <- c(290,2,2,1,3,2)
+constraints <- matrix(rbind(c_salary,
+                            c_qb,
+                            c_rb,
+                            c_te,
+                            c_wr,
+                            c_keeper),
+                      nrow = 6)
+
+
+solved <-
+  lp(direction = "max",
+     objective.in = objective,
+     const.mat = constraints,
+     const.dir = direction,
+     const.rhs = rhs,
+     all.bin = TRUE,
+     num.bin.solns = 1)
+
+solved$solution 
+
+no_top_rb$in_solution = solved$solution
+
+no_top_rb %>% filter(in_solution == 1) 

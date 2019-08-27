@@ -25,6 +25,13 @@ df <- bind_rows(qb_single_obs_per_cluster %>% mutate(position = 'QB',
 
 
 
+
+# adp_data <- ()
+# 
+# adp_data %>%
+#   mutate(cluster = case_when(position == 'QB' & adp_pos %between% (x,y) ~ ,
+#                              ))
+
 shinyServer(
     function(input, output) {  
         
@@ -116,4 +123,20 @@ shinyServer(
                arrange(Position, Cluster)
                },
             options=list(searching=FALSE, paging = FALSE))
+       
+       # output$
+       
+       output$total_spend <- renderDataTable({
+         data.frame(as.character(df_expanded()$position),
+                    as.character(df_expanded()$cluster),
+                    df_expanded()$avg_ppg,
+                    df_expanded()$avg_cost,
+                    solve_model()) %>%
+           filter(solve_model()==1) %>%
+           data.frame() %>%
+           select(-5) %>%
+           `colnames<-`(c("Position","Cluster","PPG","Cost")) %>%
+           summarise(total_spend = sum(Cost))
+       })
+       
 })

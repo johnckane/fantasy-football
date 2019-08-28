@@ -6,7 +6,7 @@ load("/home/john/projects/fantasy-football/team_df.Rda")
 url_base <- "https://fantasyfootballcalculator.com/adp?format=standard&year="
 url_coda <- "&teams=12&view=graph&pos=all"
 year <- 2019
-dim <- 201
+dim <- 195
 
 for(j in 1:1){
   
@@ -137,6 +137,8 @@ uncoded_w_code <-
                                    player == "Pat Mahomes"        ~ 'PM-0025',
                                    player == "T.J. Hockenson"     ~ 'Hocke01',
                                    player == "Tony Pollard"       ~ 'Polla01',
+                                   player == "Marquise Brown"     ~ 'Brown01',
+                                   player == "Miles Boykin"       ~ 'Boyki01',     
                                    TRUE ~ as.character(NA)))
                                  
 
@@ -159,8 +161,8 @@ adp_2019 <-
 
 
 adp_2019 %>% distinct() %>% dim()
-
-
+any(is.na(adp_2019))
+which(is.na(adp_20))
 
 head(adp_2019)
 
@@ -169,12 +171,47 @@ adp_2019_ranked <-
   arrange(overall) %>%
   mutate(overall = row_number()) %>%
   group_by(pos) %>%
-  mutate(pos_adp = row_number()) %>%
-  left_join(players, by = "player_code") %>%
-  mutate(age = 2019 - year(as_date(dob)))
+  mutate(pos_adp = row_number()) 
 
 ## Incorporate age
 
+head(players)
 
-save(adp_2019, file = "/home/john/projects/fantasy-football/data/adp-data/adp_2018.Rda")
+adp_2019_ranked_w_age <-
+  adp_2019_ranked %>%
+  left_join(players, by = "player_code") %>%
+  mutate(age = 2019 - year(as_date(dob)))
+
+# Also get BYE weeks
+bye_weeks <-
+  data.frame(team = c('NYJ','SF',
+                      'DET','MIA',
+                      'BUF','CHI','IND','OAK',
+                      'CAR','CLE','PIT','TB',
+                      'BAL','DAL',
+                      'ATL','CIN','LAR','NO',
+                      'DEN','HOU','JAX','NE','PHI','WAS',
+                      'GB','NYG','SEA','TEN',
+                      'ARI','KC','LAC','MIN'),
+             bye = c(4,4,
+                     5,5,
+                     6,6,6,6,
+                     7,7,7,7,
+                     8,8,
+                     9,9,9,9,
+                     10,10,10,10,10,10,
+                     11,11,11,11,
+                     12,12,12,12),
+             stringsAsFactors = F)
+
+adp_2019_ranked_w_age_bye <-
+  adp_2019_ranked_w_age %>%
+  left_join(bye_weeks, by = 'team')
+
+any(is.na(adp_2019_ranked_w_age_bye$bye))
+#which(is.na(adp_2019_ranked_w_age_bye$bye))
+#adp_2019_ranked_w_age_bye$team[c(23,83,121)]
+
+
+save(adp_2019_ranked_w_age_bye, file = "/home/john/projects/fantasy-football/data/adp-data/adp_2019_ranjed_w_age_bye.Rda")
 

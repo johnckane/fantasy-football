@@ -1,0 +1,242 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Connect to DB
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(DBI)
+library(pool)
+pool <- dbPool(drv = RMySQL::MySQL(), 
+               dbname = "armchair_analysis", 
+               host = "localhost", 
+               username = "john", 
+               port = 3306, 
+               unix.sock = "/var/run/mysqld/mysqld.sock")
+team_name_abbr_lookup <- data.frame(abbr = c('ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN',
+                                             'DET','GB' ,'HOU','IND','JAC','KC' ,'LA' ,'MIA','MIN','NE',
+                                             'NO' ,'NYG','NYJ','OAK','PHI','PIT','SD' ,'SEA','SF' , 'STL',
+                                             'TB','TEN','WAS'),
+                                    name = c('Cardinals','Falcons','Ravens','Bills','Panthers','Bears','Bengals','Browns',
+                                             'Cowboys','Broncos','Lions','Packers','Texans','Colts','Jaguars','Chiefs','Rams',
+                                             'Dolphins','Vikings','Patriots','Saints','Giants','Jets','Raiders','Eagles',
+                                             'Steelers','Chargers','Seahawks','49ers','Rams','Buccaneers','Titans','Redskins'),
+                                    stringsAsFactors = FALSE)
+
+```
+
+
+
+## Defense
+```{r}
+defense <- dbGetQuery(con = pool,
+                      "
+                      select
+                       a.gid
+                      ,a.team
+                      ,a.year
+                      ,sum(a.pts) as fp
+                      from
+                      (select
+                       a1.gid
+                      ,a1.team
+                      ,a1.year
+                      ,a1.sck + 6*a1.tdret + 2*a1.ints + 2*a1.saf +2*a1.blk +2*a1.frcv +6*a1.tdd as pts
+                      from defense as a1) as a
+                      group by 1,2,3")
+# need to change this to seas, wk, gid, team, pa
+all_points <- dbGetQuery(con = pool,
+                         "select seas, wk, gid, h, ptsv as pa_h, v, ptsh as pa_v
+                         from game")
+pa <-
+  all_points %>%
+  select(seas,wk,gid,h,pa_h) %>%
+  rename(team = h, pa = pa_h) %>%
+  dplyr::union(.,all_points %>%
+          select(seas,wk,gid,v,pa_v) %>%
+          rename(team = v, pa = pa_v)
+  ) %>% 
+  mutate(pts = ifelse(pa == 0, 5,
+                      ifelse(pa >=1 & pa <=6, 4,
+                             ifelse(pa >= 7 & pa <= 13,3,
+                                    ifelse(pa >= 14 & pa <= 17,1,
+                                           ifelse(pa >= 28 & pa <= 34, -1,
+                                                  ifelse(pa >= 35 & pa <= 45, -3,
+                                                         ifelse(pa >= 46, -5, 0))))))))
+
+```
+
+```{r}
+
+# now yards against
+# I think the way to do it is to look at yards by team, then give this value to their opponent
+
+ty <- dbGetQuery(con = pool,
+                  "select
+                    gid
+                  , tid
+                  , tname
+                  , ry + py as ty
+                  from team")
+tya <- 
+ty %>%
+  group_by(gid) %>%
+  mutate(tya = ifelse(row_number() == 1, lead(ty), lag(ty))) %>%
+  select(gid,tname,tya) %>%
+  mutate(fpts = ifelse(tya < 100, 5,
+                        ifelse(tya >= 100 & tya <= 199, 3,
+                               ifelse(tya >= 200 & tya <= 299, 2,
+                                      ifelse(tya >= 350 & tya <= 399,-1,
+                                             ifelse(tya >= 400 & tya <= 449, -3,
+                                                    ifelse(tya >= 450 & tya <= 499,-5,
+                                                           ifelse(tya >= 500 & tya <= 549, -6,
+                                                                  ifelse(tya >= 550, -7,0)))))))))
+total_defense <- 
+  defense %>%
+  select(gid,team,fp) %>%
+  inner_join(pa %>% select(gid,team,pts),
+             by = c("gid","team")) %>%
+  inner_join(tya %>% select(-tya),
+             by = c("gid","team" = "tname")) %>%
+  ungroup() %>%
+  mutate(points = fp + pts + fpts) %>%
+  select(-fp,-pts,-fpts)
+head(total_defense)
+
+total_defense2 <- total_defense %>%
+  left_join(.,
+            dbGetQuery(con = pool,
+                       "select gid, seas as year, wk as week from game"),
+            by = c("gid")) %>%
+  inner_join(.,team_name_abbr_lookup, by = c("team" = "abbr")) %>%
+  mutate(player = paste0(name," D/ST")) %>%
+  select(player,year,week,points)
+
+
+head(total_defense2)
+```
+
+Yearly Defense
+```{r}
+defense_summary <- 
+  total_defense2 %>%
+  group_by(player,year) %>%
+  filter(week <= 16) %>%
+  summarise(avg_ppg = mean(points))
+```
+
+ADP data
+
+```{r}
+load("~/projects/fantasy-football/data/adp-data/adp.Rda")
+```
+
+```{r}
+dst_adp <-
+  defense_summary %>%
+  inner_join(.,
+             adp,
+             by = c("year","player" = "player_code"))
+```
+
+```{r}
+head(dst_adp)
+```
+
+
+```{r}
+ggplot(data = dst_adp, aes(x = pos_adp, y = avg_ppg)) +
+  geom_point() +
+  geom_smooth()
+```
+
+Now Draft Cost
+
+```{r}
+load("~/projects/fantasy-football/data/bn-draft-data/draft_data.Rda")
+head(draft_data)
+```
+
+```{r}
+dst_draft_prod <-
+  draft_data %>%
+  filter(pos == 'D/ST') %>%
+  inner_join(defense_summary, by = c("year","player_code"="player"))
+```
+
+```{r}
+glimpse(dst_draft_prod)
+```
+
+```{r}
+ggplot(data = dst_draft_prod,
+       aes(x = adj_value,y = avg_ppg)) +
+  geom_point() +
+  geom_smooth()
+```
+
+Draft, ADP, Production
+```{r}
+dst_draft_adp_prod <-
+  dst_draft_prod %>%
+  inner_join(dst_adp, by = c("year","player"))
+```
+
+```{r}
+ggplot(data = dst_draft_adp_prod,
+       aes(x = pos_adp, y = adj_value, label = round(avg_ppg.x))) +
+  geom_point() +
+  geom_label()
+```
+
+
+## Kicking
+
+```{r}
+dbGetQuery(con = mydb,
+           "select * from game limit 10")
+dbGetQuery(con = mydb,
+           "select * from play limit 10")
+kicking <- dbGetQuery(con = mydb,
+                      "
+                      select
+                       a.fkicker as player
+                      ,b.seas as year
+                      ,b.wk as week
+                      ,sum(a.pts) as points
+                      from
+                      (select 
+                        a1.pid
+                      , b1.gid
+                      , a1.fkicker
+                      , case when a1.fgxp = 'XP' and a1.good = 1 then 1 
+                             when a1.fgxp = 'FG' and a1.good = 1 and a1.dist <= 39 then 3
+                             when a1.fgxp = 'FG' and a1.good = 1 and a1.dist >= 40 and dist <= 49 then 4
+                             when a1.fgxp = 'FG' and a1.good = 1 and a1.dist >= 50 then 5
+                             when a1.fgxp = 'FG' and a1.good = 0 then -1
+                             else 0
+                        end as pts
+                        from fgxp as a1
+                        join play as b1 on a1.pid = b1.pid) as a
+                     join game as b on a.gid = b.gid
+                     group by 1,2,3
+                      ")
+head(kicking)
+```
+
+```{r}
+head(total_defense)
+total_defense2 <- total_defense %>%
+  left_join(.,
+            dbGetQuery(con = mydb,
+                       "select gid, seas as year, wk as week from game"),
+            by = c("gid")) %>%
+  inner_join(.,team_name_abbr_lookup, by = c("team" = "abbr")) %>%
+  mutate(player = paste0(name," D/ST")) %>%
+  select(player,year,week,points)
+head(total_defense2)
+```
+

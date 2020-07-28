@@ -1,0 +1,354 @@
+---
+title: 'Season Recap and Playoff Preview'
+author: "Stats Corner"
+date: "December 10, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+library(googlesheets)
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(knitr)
+library(ggplot2)
+library(DT)
+library(ggrepel)
+workbook <- gs_url("https://docs.google.com/spreadsheets/d/1c24qtCDF6MnL1I-nNG2ovymFB3fYj1NsWpLe3SGCbJs/pubhtml")
+
+owner <- workbook %>% gs_read(ws = "Owner-Team Name")
+games <- workbook %>% gs_read(ws = "Regular Season Games")
+
+owner_games <- left_join(games,owner,by=c("year","team"))
+
+data <- arrange(owner_games,game_id,points)
+data$W <- rep(0,dim(data)[1])
+data$L <- rep(0,dim(data)[1])
+data$T <- rep(0,dim(data)[1])
+data$PA <- rep(0,dim(data)[1])
+data$result <- rep(" ",dim(data)[1])
+data$last_of_streak <- rep(0,dim(data)[1])
+data$opponent <- rep(" ",dim(data)[1])
+games_played <- data %>% filter(points > 0)
+### Loop to determine winners, and points against
+for(i in seq(from=1,to=dim(games_played)[1],by=2)){
+  
+  games_played$PA[i]   <- games_played$points[i+1]
+  games_played$PA[i+1] <- games_played$points[i]
+  
+  games_played$opponent[i] <- games_played$owner[i+1]
+  games_played$opponent[i+1] <- games_played$owner[i]
+  
+  if(games_played$points[i] < games_played$points[i+1]){
+    games_played$L[i] <- 1
+    games_played$W[i+1] <- 1
+    games_played$result[i] <- "L"
+    games_played$result[i+1] <- "W"
+    
+  }
+  if(games_played$points[i] == games_played$points[i+1]){
+    games_played$T[i] <- 1
+    games_played$T[i+1] <- 1
+    games_played$result[i] <- "T"
+    games_played$result[i+1] <- "T"
+  }
+  
+}
+
+
+games_played <- games_played %>%
+  arrange(year,week,desc(points)) %>%
+  group_by(year,week) %>%
+  mutate(rk = rank(points,ties.method="min"),
+         opp_rk = rank(PA,ties.method="min")) 
+
+# Now to calculate and add up proportional wins
+games_played$pw<- ifelse(games_played$year==2009,(games_played$rk-1)/9,(games_played$rk-1)/11)
+games_played$opp_pw <- ifelse(games_played$year==2009,(games_played$opp_rk-1)/9,(games_played$opp_rk-1)/11)
+
+season_summary <- games_played %>%
+  ungroup() %>%
+  mutate(luck = W - pw) %>%
+  group_by(year,owner) %>%
+  summarise(pw_sum = sum(pw),
+            luck_sum = sum(luck),
+            points_sum = sum(points),
+            pa_sum = sum(PA),
+            sos = mean(opp_pw)) %>%
+  ungroup() %>%
+  group_by(year) %>%
+  mutate(season_rank_points = dense_rank(-points_sum),
+         season_rank_pw = dense_rank(-pw_sum)) %>%
+  ungroup() %>%
+  mutate(pw_rank = dense_rank(-pw_sum),
+         pw_rank_btm = dense_rank(pw_sum),
+         luck_rank_top = dense_rank(-luck_sum),
+         luck_rank_btm = dense_rank(luck_sum),
+         points_rank = dense_rank(-points_sum),
+         pa_rank = dense_rank(-pa_sum),
+         points_rank_btm = dense_rank(points_sum),
+         sos_rank = dense_rank(-sos))
+
+```
+
+## RIP The Jimmy G Era
+Even though we still have the playoffs, we've likely seen the end of the Jimmy G Era in Bad Newz once this season ends. RJ has the second most team names of all time, coming in at 7 in 8 seasons. Only McShane is a perfect 8 for 8 in terms of seasons/different team names. So it's unlikely we'll see them next year.  
+```{r, echo = FALSE}
+owner %>%
+  group_by(owner) %>%
+  summarise(seasons = n(),
+            different_team_names = n_distinct(team)) %>%
+  arrange(-different_team_names,seasons) %>%
+  slice(1:13) %>%
+  `colnames<-`(c("Owner","Seasons","Team Names")) %>%
+  kable()
+```
+
+We've also likely seen the end of the Jimmy G Era in New England. It lasted longer in Bad Newz than Foxboro, but I digress. 
+
+Two weeks ago RJ was 6-5, a record historically associated with a 64% chance at the playoffs. He was in a 4-way tie for **4th** in the league.  He then lost his next two games __by a combined 0.5 points!__. 
+
+This has me thinking...
+
+1. Have we ever seen anything like this? 
+
+2. Is this karma for dropping a league record 192.6 points in Round 2 of the playoffs last year despite having the worst team in the history of the league as measured by PW? 
+
+3. Which offseason Patriot storyline will inspire RJ's team name next year?
+
+
+```{r, echo = FALSE}
+# g <- function(x){
+#   
+#   data_all <- games_played %>% 
+#     filter(year != 2009,year!=2016,week<=x) %>%
+#     group_by(year,team,playoffs) %>%
+#     summarise(wins = sum(W)) %>%
+#     group_by(wins) %>%
+#     summarise(yeas = sum(playoffs),
+#               ttl  = n()) %>%
+#     select(wins,ttl,yeas)
+#   
+#   data_summary <- 
+#     data_all %>%
+#     group_by(wins) %>%
+#     summarise(total_yeas = sum(yeas),
+#               total      = sum(ttl),
+#               playoff_rate = total_yeas/total) %>%
+#     mutate(week = x)
+#   
+#   return(data_summary)
+# }
+# 
+# 
+# full_data <- rbind(g(1),g(2),g(3),g(4),g(5),g(6),g(7),g(8),g(9),g(10),g(11),g(12),g(13))
+# 
+# rate_matrix <- dcast(full_data,week~wins,value.var='playoff_rate')
+# 
+# week11standings <- games_played %>%
+#   filter(year == 2016 & week <= 11) %>%
+#   group_by(owner) %>%
+#   summarise(total_w = sum(W))
+
+## Lowest Combined Margin in losing back to back games ##
+games_played %>%
+  ungroup() %>%
+  mutate(margin = points - PA) %>%
+  filter(margin < 0 ) %>%
+  arrange(year,owner,week) %>%
+  group_by(year,owner) %>%
+  mutate(lag_week = lag(week),
+         lag_margin = lag(margin)) %>%
+  filter(week == lag_week + 1) %>%
+  mutate(two_game_margin = margin + lag_margin) %>%
+  arrange(-two_game_margin) %>%
+  ungroup() %>%
+  mutate(weeks = paste0(week - 1, ", ", week)) %>%
+  select(10,7,1,30,29) %>%
+  slice(1:5) %>%
+  `colnames<-`(c("Owner","Team","Year","Weeks","Combined Margin")) %>%
+  kable(digits = 1, align = 'lllrr') 
+  
+
+
+```
+
+The answers here:
+
+1. No, we haven't. The next closest back to back loss combined margin is eight times more than what befell RJ. 
+
+2. Last year RJ beat Hartman in Round 2 who beat Regan in SAT Bowl III, costing Regan the SAT. But what if Hartman beat RJ last year in Round 2? Then it would have been Regan vs. RJ in SAT Bowl III. Last year in Round 3 Regan would have beaten RJ 88.4 to 80.5, costing RJ the SAT! Yes this is karma. 
+
+3. Smart money is on "Gronk's Party Ship Mutiny"
+
+
+## Hartman Was Historically Great
+Hartman did not set the record for the most PW, nor the most points ever. But he came close. The second ever team to over 1600 points as well as 10 PW. 
+```{r, echo = FALSE}
+season_summary %>%
+  select(2,1,5,14,3,10) %>%
+  arrange(-points_sum) %>%
+  slice(1:8) %>%
+  `colnames<-`(c("Owner", "Year", "Points", "Points Rank","PW","PW Rank")) %>%
+  kable(digits = 1)
+
+```
+
+#### Well Out Ahead
+```{r, echo = FALSE}
+# Want this plot:
+# y axis year
+# x axis points
+# label owner
+plot1 <- ggplot(data = season_summary %>% mutate(year2 = 2*year),
+                aes(x = pw_sum, y = year2))
+plot1 + 
+  geom_point(size = 2) +
+  geom_abline(slope = 0, intercept = 4018) +
+  geom_abline(slope = 0, intercept = 4020) + 
+  geom_abline(slope = 0, intercept = 4022) +
+  geom_abline(slope = 0, intercept = 4024) +
+  geom_abline(slope = 0, intercept = 4026) +
+  geom_abline(slope = 0, intercept = 4028) +
+  geom_abline(slope = 0, intercept = 4030) +
+  geom_abline(slope = 0, intercept = 4032) +
+  scale_y_continuous("Year",
+                     lim = c(4016, 4033),
+                     breaks = c(4018,4020,4022,4024,4026,4028,4030,4032),
+                     labels = c("2009","2010","2011","2012","2013","2014","2015","2016")) +
+  scale_x_continuous("Total PW",breaks = c(3,3,4,5,6,7,8,9,10,11),
+                     lim = c(3,11)) +
+  # geom_label(data = season_summary %>% filter(season_rank_points %in% c(1,2)),
+  #            aes(label = owner),
+  #            nudge_y = 0.35,
+  #            size = 2,
+  #            angle = 45)+
+  geom_text(data = season_summary %>% filter(season_rank_pw %in% c(1,2)) %>% mutate(year2 = 2*year),
+            aes(label = owner),
+            nudge_y = 1,
+            size = 3,
+            angle = 15) +
+  ggtitle("Total PW By Year",subtitle = "Season PW; 1st and 2nd Place Labeled")
+```
+
+What hopefully stands out is just how far ahead Hartman was of second place this year. Let's quantify this. Take the difference between Hartman (10.0 PW) and Higdon (7.8 PW) which is 2.2 PW. Subtract 2.2 PW from Higdon and we're down to 5.6 PW which would have been good for 9th place!
+
+Do this for every year (In 2009 Regan and Shokunbi tied at 9.0 PW, so go to McShane at 3rd) and this is what we have.
+
+```{r, echo = FALSE}
+season_diffs <-
+  season_summary %>%
+  filter(season_rank_pw %in% c(1,2)) %>%
+  arrange(year,season_rank_pw) %>%
+  group_by(year) %>%
+  mutate(diff = lag(pw_sum) - pw_sum) %>%
+  filter(season_rank_pw == 2) %>%
+  select(1,18)
+
+season_second_place <-
+  season_summary %>%
+  filter(season_rank_pw == 2) %>%
+  select(year, pw_sum) %>%
+  inner_join(season_diffs, by = "year") %>%
+  mutate(next_place = pw_sum - diff,
+         owner = "Next Place")
+
+hypothetical <-
+  season_summary %>%
+  select(1,2,3) %>%
+  union(season_second_place %>% select(1,5,4) %>% rename(pw_sum = next_place)) %>%
+  group_by(year) %>%
+  mutate(new_pw_rank = dense_rank(-pw_sum) - 1)
+  
+new_ranks <-
+  hypothetical %>%
+  filter(owner == "Next Place")
+
+# Now Join Them All
+season_summary %>%
+  filter(season_rank_pw == 1) %>%
+  select(1,2,3) %>%
+  inner_join(season_diffs, by = "year") %>%
+  inner_join(new_ranks %>% select(1,4), by = "year") %>%
+  arrange(year) %>%
+  `colnames<-`(c("Year","PW Leader","PW","Distance to 2nd Place","Equivalent of Distance Between 2nd And...")) %>%
+  kable(digits = 1)
+  
+```
+
+
+OK, I did it Hartman. I found a metric that said you were better than 2011 Shokunbi. As per our agreement that will be $25 in draft cash next year.
+
+#### 2016 Hartman vs. 2011 Shokunbi
+
+What if these two teams squared off against each other? Who would have won each week?
+
+```{r, echo = FALSE}
+games_played %>%
+  ungroup() %>%
+  filter((year == 2011 & owner == "Shokunbi") | (year == 2016 & owner == "Hartman")) %>%
+  mutate(team = paste0(year," ",owner)) %>%
+  select(team,points,week) %>%
+  spread(., key = team, value = points) %>%
+  mutate(Winner = ifelse(`2011 Shokunbi` > `2016 Hartman`,
+                         '2011 Shokunbi',
+                         '2016 Hartman')) %>%
+  rename(Week = week) %>%
+  arrange(Week) %>%
+  kable(align = 'lllr')
+
+```
+
+The final tally is Shokunbi 8, Hartman 5. Better luck next year Hartman. 
+
+## Record Chasing
+
+Recapping previous weeks:
+
+1. Hartman finishes 2nd in both PW and Points.
+
+2. Olson finishes 4th in fewest PA, 7th in Luck
+
+3. Kane finishes 18th in most PA, 3rd (un)Luck 
+
+4. Harris finishes 10th fewest points, 7th fewest PW
+
+5. Ready finishes 3rd fewest points, tied for fewest PW all time (aforementioned 2015 Thieneman 12.5 PSI)
+
+
+
+## Playoff Preview
+Last year I attempted to simulate the playoffs with disasterous results. This year I'll skip that and throw up some playoff leaderboards. Stats for appearances and BYEs include this year, other records do not.
+
+```{r, echo = FALSE}
+owner %>%
+  mutate(title_appearance = ifelse(place %in% c(1,2),1,0),
+         title_win = ifelse(is.na(place) == TRUE,0,
+                            ifelse(place == 1,1,0)),
+         games_mattering = ifelse(is.na(place) == TRUE,0,
+                                  ifelse(place %in% c(1,2) & bye == 0 ,3,
+                                         ifelse(place %in% c(1,2) & bye == 1, 2,
+                                                ifelse(place %in% c(3,4) & bye == 0, 2,
+                                                        ifelse(place %in% c(3,4) & bye == 1, 1,
+                                                                ifelse(place %in% c(5,6),1,0))))))) %>%
+  group_by(owner) %>%
+  summarise(seasons = n(),
+            playoffs = sum(playoffs),
+            ttl_byes = sum(bye),
+            ttl_gm = sum(games_mattering),
+            ttl_title_games = sum(title_appearance),
+            ttl_titles = sum(title_win)) %>%
+  arrange(-playoffs) %>%
+  `colnames<-`(c("Owner","Seasons","Playoff Appearances","BYEs","Relevant Games*","Title Games","Championships")) %>%
+  slice(1:13) %>%
+  # kable()
+    DT::datatable(caption = "Sortable Playoff Leaderboard", rownames = FALSE, options = list(searching = FALSE, paging = FALSE ))
+
+```
+
+*Relevant Games are the total games played where you could still win the championship. BYEs do not count towards this. Intended to be a general measure of playoff success even if titles elude you.
+
+
+
+
+

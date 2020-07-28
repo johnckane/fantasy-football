@@ -1,0 +1,417 @@
+---
+title: "top40-models"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+load("/home/john/projects/fantasy-football/data/analysis-data/wr.Rda")
+```
+
+```{r}
+head(wr)
+```
+
+```{r}
+min(wr$experience)
+```
+
+```{r}
+wr %>%
+  filter(experience == 0) %>%
+  mutate(top40 = ifelse(league_rank <= 25,1,0)) %>%
+  group_by(year) %>%
+  summarise(count = n(),
+            sum = sum(top40),
+            ttl = sum(top40)/n())
+```
+
+```{r}
+wr %>%
+  filter(league_rank <= 25, year > 2010) %>%
+  mutate(group = case_when(between(league_rank,1,5) ~ 1,
+                           between(league_rank,6,10) ~ 2,
+                           between(league_rank,11,15) ~ 3,
+                           between(league_rank,16,20) ~ 4,
+                           between(league_rank,21,25) ~ 5,
+                           TRUE ~ NA_real_)) %>%
+  ggplot(data = .,
+         aes(x = league_rank,
+             y = total_points)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth() +
+  geom_smooth(aes(colour = as.factor(group), group = group),method = "lm") +
+  geom_smooth(method = 'lm')
+```
+
+```{r}
+wr %>%
+  filter(league_rank <= 25) %>%
+  mutate(group = case_when(between(league_rank,1,5) ~ 1,
+                           between(league_rank,6,10) ~ 2,
+                           between(league_rank,11,15) ~ 3,
+                           between(league_rank,16,20) ~ 4,
+                           between(league_rank,21,25) ~ 5,
+                           TRUE ~ NA_real_)) %>%
+  group_by(group) %>%
+  summarise(mean_points = mean(total_points))
+```
+
+```{r}
+wr %>%
+  filter(league_rank <= 25) %>%
+  mutate(era = ifelse(year >= 2015,1,0)) %>%
+  ggplot(data = .,
+         aes(x = league_rank,
+             y = total_points,
+             group=era,
+             colour = as.factor(era))) +
+  geom_point(alpha = 0.1) +
+  geom_smooth() +
+  geom_smooth(aes(colour = as.factor(era), group = era),method = "lm") +
+  geom_smooth(method = 'lm')
+```
+
+```{r}
+wr %>%
+  filter(league_rank <= 25) %>%
+  group_by(year) %>%
+  summarise(mean_top25_points = mean(total_points)) %>%
+  ggplot(data = .,
+         aes(x = year,
+             y = mean_top25_points)) +
+  geom_bar(stat = 'identity')
+```
+
+Model baseline:
+
+
+
+
+```{r}
+yoy_top <- 
+wr %>%
+  filter(is.na(league_rank) == FALSE) %>%
+  mutate(top25 = ifelse(league_rank <= 25,1,0),
+         top10 = ifelse(league_rank <= 10,1,0),
+         top5  = ifelse(league_rank <= 5,1,0)) %>%
+  arrange(player,year) %>%
+  group_by(player) %>%
+  mutate(top25_lastyear = ifelse(lag(year) == year - 1, lag(top25),NA),
+         top10_lastyear = ifelse(lag(year) == year - 1, lag(top10),NA),
+         top5_lastyear  = ifelse(lag(year) == year - 1, lag(top5),NA),
+         team_rank_lastyear = ifelse(lag(year) == year - 1,lag(team_rank),NA),
+         league_rank_lastyear = ifelse(lag(year) == year - 1,lag(league_rank),NA))
+```
+
+```{r}
+yoy_top %>%
+  filter(top25 == 1) %>%
+  group_by(year) %>%
+  summarise(total_players = sum(top25),
+            carryover25 = sum(top25_lastyear, na.rm = T),
+            carryover10 = sum(top10_lastyear, na.rm = T),
+            carryover5  = sum(top5_lastyear, na.rm = T)) %>%
+  ungroup() %>%
+  summarise(mean25 = mean(carryover25)/25,
+            mean10 = mean(carryover10)/10,
+            mean5 = mean(carryover5)/5)
+```
+
+
+```{r}
+yoy_top <- 
+wr %>%
+  filter(is.na(league_rank) == FALSE) %>%
+  mutate(top25 = ifelse(league_rank <= 25,1,0),
+         top10 = ifelse(league_rank <= 10,1,0),
+         top5  = ifelse(league_rank <= 5,1,0)) %>%
+  arrange(player,year) %>%
+  group_by(player) %>%
+  mutate(top25_lastyear = ifelse(lag(year) == year - 1, lag(top25),NA),
+         top10_lastyear = ifelse(lag(year) == year - 1, lag(top10),NA),
+         top5_lastyear  = ifelse(lag(year) == year - 1, lag(top5),NA),
+         team_rank_lastyear = ifelse(lag(year) == year - 1,lag(team_rank),NA),
+         league_rank_lastyear = ifelse(lag(year) == year - 1,lag(league_rank),NA))
+
+yoy_top %>%
+  filter(top25 == 1) %>%
+  group_by(year) %>%
+  summarise(total_players = sum(top25),
+            carryover = sum(top25_lastyear, na.rm = T))
+```
+
+
+
+## Benchmarks
+
+top 40 YOY will make it the next year
+
+
+```{r}
+accuracy = purrr::map_dbl(.data$models, ~ pROC::auc(pROC::roc(response = insight::get_response(.x), predictor = stats::predict.glm(.x, stats::model.frame(.x)))))
+
+
+yoy_top %>%
+  ungroup() %>%
+  filter(is.na(top25_lastyear) == F) %>%
+  split(.$year) %>% # from base R
+  map_dbl(~pROC::auc(predictor = .$top25_lastyear, response = .$top25))
+```
+
+## Build some simple models
+
+```{r}
+colnames(yoy_top)
+```
+
+```{r}
+yoy_top %>%
+  ungroup() %>%
+  filter(is.na(top25_lastyear) == F) %>%
+  split(.$year) %>% # from base R
+  map_dbl(~pROC::auc(predictor = glm(data = .,
+                                     top25 ~ 
+                                       experience + 
+                                       age + 
+                                       league_rank_lastyear  + 
+                                       top25_lastyear +
+                                       top10_lastyear + 
+                                       top5_lastyear,
+                                     family = 'binomial')$fitted.values,
+                     response = .$top25))
+```
+
+Who did it predict for 2018?
+
+```{r}
+m <- yoy_top %>%
+  ungroup() %>%
+  filter(year == 2018) %>%
+  glm(data = .,
+      top25 ~ 
+        experience + 
+        age + 
+        league_rank_lastyear  + 
+        top25_lastyear +
+        top10_lastyear + 
+        top5_lastyear,
+        family = 'binomial')
+
+
+df <- 
+  yoy_top %>%
+  ungroup() %>%
+  filter(year == 2018,
+         is.na(top25_lastyear) == F)
+
+glimpse(df)
+
+tibble(player = df$name,
+       pred = m$fitted.values,
+       top25 = df$league_rank) %>%
+  arrange(desc(pred))
+
+```
+
+Try a shrinkage model
+
+```{r}
+library(glmnet)
+features <- c('experience','age','league_rank_lastyear','top40_lastyear','top20_lastyear','top10_lastyear','top5_lastyear')
+
+yoy_top_noNA <- yoy_top[is.na(yoy_top$top40_lastyear) == F,]
+
+lasso <- glmnet(x = as.matrix(yoy_top_noNA[,features]),
+                y = yoy_top_noNA$top40,
+                family = 'binomial',
+                alpha = 1)
+
+which.max(lasso$dev.ratio)
+lambda <- lasso$lambda[67]
+
+
+final_lasso <- glmnet(x = as.matrix(yoy_top_noNA[,features]),
+                      y = yoy_top_noNA$top40,
+                      family = 'binomial',
+                      lambda = lambda,
+                      alpha = 1)
+?predict.glmnet
+predict(final_lasso,newx = as.matrix(yoy_top_noNA[,features]),s =lambda,type='response')
+
+pROC::auc(response = yoy_top_noNA$top40,
+          predictor = as.numeric(predict(final_lasso,
+                              newx = as.matrix(yoy_top_noNA[,features]),
+                              s =lambda,
+                              type='response')))
+
+
+```
+
+```{r}
+final_lasso <- glmnet(x = as.matrix(yoy_top_noNA[,features]),
+                      y = yoy_top_noNA$top40,
+                      family = 'binomial',
+                      lambda = lambda,
+                      alpha = 1)
+
+final_lasso$lambda[which.max(final_lasso$dev.ratio)]
+
+final_lasso$lambda.1se
+
+```
+
+
+
+```{r}
+yoy_top %>%
+  filter(is.na(top40_lastyear) == F) %>%
+  split(.$year) %>%
+  map(.,
+      ~ glmnet(x = model.matrix(data = .,
+                                .$top40 ~ 
+                                  .$experience + 
+                                  .$age + 
+                                  .$league_rank_lastyear  + 
+                                  .$top40_lastyear + 
+                                  .$top20_lastyear +
+                                  .$top10_lastyear + 
+                                  .$top5_lastyear)[,-1],
+               y = .$top40,
+               family = 'binomial',
+               alpha = 1,)) %>%
+  map(.,
+      ~.$lambda[which.max(.$dev.ratio)])
+
+## Ok so this works...now I need to use it. Let's see if we can find the best model 
+
+```
+
+
+```{r}
+# write a function to fit a glmnet, find the best value of alpha and lambda then fit again with those values
+
+yoy_top %>%
+  filter(is.na(top40_lastyear) == F) %>%
+  split(.$year) %>%
+  map(., ~pROC::auc(response = .$top40,
+                    predictor = as.numeric(
+                      predict(
+                        glmnet(x = model.matrix(data = .,
+                                                .$top40 ~
+                                                  .$experience + 
+                                                  .$age + 
+                                                  .$league_rank_lastyear  + 
+                                                  .$top40_lastyear + 
+                                                  .$top20_lastyear +
+                                                  .$top10_lastyear + 
+                                                  .$top5_lastyear)[,-1],
+                               y = .$top40,
+                               family = 'binomial',
+                               alpha = 1),
+                       newx = as.matrix(.[,features]),
+                      s=cv.glmnet(x = model.matrix(data = .,
+                                                .$top40 ~
+                                                  .$experience + 
+                                                  .$age + 
+                                                  .$league_rank_lastyear  + 
+                                                  .$top40_lastyear + 
+                                                  .$top20_lastyear +
+                                                  .$top10_lastyear + 
+                                                  .$top5_lastyear)[,-1],
+                               y = .$top40,
+                               family = 'binomial',
+                               alpha = 1)$lambda.1se,
+                      type='response'
+                      )
+                      )
+                    )
+      )
+```
+
+## Now compare glm to glmnet
+```{r}
+yoy_top %>%
+  ungroup() %>%
+  filter(is.na(top40_lastyear) == F) %>%
+  split(.$year) %>% # from base R
+  map_dbl(~pROC::auc(predictor = glm(data = .,
+                                     top40 ~ 
+                                       experience + 
+                                       age + 
+                                       league_rank_lastyear  + 
+                                       top40_lastyear + 
+                                       top20_lastyear +
+                                       top10_lastyear + 
+                                       top5_lastyear,
+                                     family = 'binomial')$fitted.values,
+                     response = .$top40)) -> glm_out
+
+yoy_top %>%
+  filter(is.na(top40_lastyear) == F) %>%
+  split(.$year) %>%
+  map_dbl(., ~pROC::auc(response = .$top40,
+                    predictor = as.numeric(
+                      predict(
+                        glmnet(x = model.matrix(data = .,
+                                                .$top40 ~
+                                                  .$experience + 
+                                                  .$age + 
+                                                  .$league_rank_lastyear  + 
+                                                  .$top40_lastyear + 
+                                                  .$top20_lastyear +
+                                                  .$top10_lastyear + 
+                                                  .$top5_lastyear)[,-1],
+                               y = .$top40,
+                               family = 'binomial',
+                               alpha = 1),
+                       newx = as.matrix(.[,features]),
+                      s=cv.glmnet(x = model.matrix(data = .,
+                                                .$top40 ~
+                                                  .$experience + 
+                                                  .$age + 
+                                                  .$league_rank_lastyear  + 
+                                                  .$top40_lastyear + 
+                                                  .$top20_lastyear +
+                                                  .$top10_lastyear + 
+                                                  .$top5_lastyear)[,-1],
+                               y = .$top40,
+                               family = 'binomial',
+                               alpha = 1)$lambda.1se,
+                      type='response'
+                      )
+                      )
+                    )
+      ) -> glmnet_out
+```
+
+```{r}
+tibble(glm_out, glmnet_out) %>%
+  mutate(glmnet_pct_better = glmnet_out/glm_out)
+```
+
+According to this, glmnet is only better once! Why would glm do so poorly?
+
+For one, it's not predicting on "unseen" data. I think we need to do that. 
+
+Can we use purrr to do that even?
+
+Steps to build models iteratively...
+
+1. glm
+2. glmnet
+3. xgboost
+
+We also need to incorporate more featuers...
+Want to incorporate:
+1. QB features
+2. First 8 / Last 8 games topX
+
+Want to know...
+1. How deep until you capture all you need to capture -- this becomes the input set for predicting who will be in each tier
+of the top
+
+Need to fix...the database!
+
+
+

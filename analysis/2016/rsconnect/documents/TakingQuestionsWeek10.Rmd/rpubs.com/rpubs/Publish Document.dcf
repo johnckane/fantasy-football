@@ -1,0 +1,8 @@
+name: Publish Document
+title:
+account: rpubs
+server: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/228548/7f20a9631f1d4bcb85aaf2b424535d73
+bundleId: https://api.rpubs.com/api/v1/document/228548/7f20a9631f1d4bcb85aaf2b424535d73
+url: http://rpubs.com/johnkane/228548/edit
+when: 1479601942.65504

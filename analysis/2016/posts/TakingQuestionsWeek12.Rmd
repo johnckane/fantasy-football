@@ -1,0 +1,240 @@
+---
+title: 'Taking Questions: Week 12'
+author: "Stats Corner"
+date: "November 30, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+library(googlesheets)
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(knitr)
+library(ggplot2)
+library(shiny)
+workbook <- gs_url("https://docs.google.com/spreadsheets/d/1c24qtCDF6MnL1I-nNG2ovymFB3fYj1NsWpLe3SGCbJs/pubhtml")
+
+owner <- workbook %>% gs_read(ws = "Owner-Team Name")
+games <- workbook %>% gs_read(ws = "Regular Season Games")
+
+owner_games <- left_join(games,owner,by=c("year","team"))
+
+data <- arrange(owner_games,game_id,points)
+data$W <- rep(0,dim(data)[1])
+data$L <- rep(0,dim(data)[1])
+data$T <- rep(0,dim(data)[1])
+data$PA <- rep(0,dim(data)[1])
+data$result <- rep(" ",dim(data)[1])
+data$last_of_streak <- rep(0,dim(data)[1])
+data$opponent <- rep(" ",dim(data)[1])
+games_played <- data %>% filter(points > 0)
+### Loop to determine winners, and points against
+for(i in seq(from=1,to=dim(games_played)[1],by=2)){
+  
+  games_played$PA[i]   <- games_played$points[i+1]
+  games_played$PA[i+1] <- games_played$points[i]
+  
+  games_played$opponent[i] <- games_played$owner[i+1]
+  games_played$opponent[i+1] <- games_played$owner[i]
+  
+  if(games_played$points[i] < games_played$points[i+1]){
+    games_played$L[i] <- 1
+    games_played$W[i+1] <- 1
+    games_played$result[i] <- "L"
+    games_played$result[i+1] <- "W"
+    
+  }
+  if(games_played$points[i] == games_played$points[i+1]){
+    games_played$T[i] <- 1
+    games_played$T[i+1] <- 1
+    games_played$result[i] <- "T"
+    games_played$result[i+1] <- "T"
+  }
+  
+}
+
+
+games_played <- games_played %>%
+  arrange(year,week,desc(points)) %>%
+  group_by(year,week) %>%
+  mutate(rk = rank(points,ties.method="min"),
+         opp_rk = rank(PA,ties.method="min")) 
+
+# Now to calculate and add up proportional wins
+games_played$pw<- ifelse(games_played$year==2009,(games_played$rk-1)/9,(games_played$rk-1)/11)
+games_played$opp_pw <- ifelse(games_played$year==2009,(games_played$opp_rk-1)/9,(games_played$opp_rk-1)/11)
+
+season_summary <- games_played %>%
+  filter(year != 2016) %>%
+  ungroup() %>%
+  mutate(luck = W - pw) %>%
+  group_by(year,owner) %>%
+  summarise(pw_sum = sum(pw),
+            luck_sum = sum(luck),
+            points_sum = sum(points),
+            pa_sum = sum(PA),
+            sos = mean(opp_pw)) %>%
+  ungroup() %>%
+  mutate(pw_rank = dense_rank(-pw_sum),
+         pw_rank_btm = dense_rank(pw_sum),
+         luck_rank_top = dense_rank(-luck_sum),
+         luck_rank_btm = dense_rank(luck_sum),
+         points_rank = dense_rank(-points_sum),
+         pa_rank = dense_rank(-pa_sum),
+         points_rank_btm = dense_rank(points_sum),
+         sos_rank = dense_rank(-sos))
+
+```
+
+
+## "In honor of my 0.3 win over RJ, what is the smallest margin of victory we've had since the move to decimal scoring?"
+Back in 2009 before we had decimal scoring we had two ties, Ready and Shokunbi tied at 97 in Week 4 then Kane and Ready tied in week 11 at 123.
+
+In 2010 we went to decimal scoring and have had 12 games decided by less than a point, or almost two per season. 
+
+```{r,echo=FALSE}
+games_played %>%
+  ungroup() %>%
+  filter(year != 2009 & ((W == 1) | (T == 1 & owner != "Shokunbi"))) %>%
+  mutate(Year = year,
+         Week = week,
+         Margin = points-PA,
+         Winner = owner,
+         Loser = opponent,
+         Score = paste0(points," - ",PA)) %>%
+  arrange(abs(Margin)) %>%
+  ungroup() %>%
+  slice(1:12) %>%
+  select(Year,Week,Margin,Winner,Loser,Score) %>%
+  kable(digits = 1, align = 'lrrrrr')
+```
+
+Also, we still had a tie! Ready and Shokunbi tied again at 131.0 in Week 4 of 2010 making my variable names sound misleading. Himmy and RJ's battle comes in at tied for 4th closest all time. Shout out to D'Skae for enduring a heartbreaking 0.1 point loss in 2011 to Matovina. 
+
+## Record Chasing
+```{r,echo=FALSE,include = FALSE}
+
+
+twelve_weeks <- games_played %>% filter(week <= 12)
+twelve_weeks_summary <- twelve_weeks %>%
+  ungroup() %>%
+  mutate(luck = W - pw) %>%
+  group_by(year,owner) %>%
+  summarise(pw_sum = sum(pw),
+            luck_sum = sum(luck),
+            pa_sum = sum(PA),
+            points_sum = sum(points))
+
+twelve_weeks_summary %>%
+  ungroup() %>%
+  arrange(-pw_sum) %>%
+  slice(1:10) %>%
+  left_join(.,season_summary %>% select(year,owner,pw_sum,pw_rank), by = c("year","owner")) %>%
+  select(1,2,3,5,6) %>%
+  `colnames<-`(c("Year", "Owner", "PW Through 12 Weeks", "PW Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+
+```
+
+
+
+### Hartman and Proportional Wins
+```{r,echo=FALSE}
+twelve_weeks_summary %>%
+  ungroup() %>%
+  arrange(-pw_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,pw_sum,pw_rank), by = c("year","owner")) %>%
+  select(1,2,3,7,8) %>%
+  `colnames<-`(c("Year", "Owner", "PW Through 12 Weeks", "PW Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+Hartman came up short of 1 full PW last week so his shot at tying Ola's record is gone.
+
+### Hartman and Total Points
+```{r, echo = FALSE}
+twelve_weeks_summary %>%
+  ungroup() %>%
+  arrange(-points_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,points_sum,points_rank), by = c("year","owner")) %>%
+  select(1,2,6,7,8) %>%
+  `colnames<-`(c("Year", "Owner", "Points Through 12 Weeks", "Points Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+Hartman needs 153.4 points to claim the single season points record. 
+
+### Olson and Luck
+```{r, echo = FALSE}
+twelve_weeks_summary %>%
+  ungroup() %>%
+  arrange(-luck_sum) %>%
+  slice(1:7) %>%
+  left_join(.,season_summary %>% select(year,owner,luck_sum,luck_rank_top), by = c("year","owner")) %>%
+  select(1,2,4,7,8) %>%
+  `colnames<-`(c("Year","Owner","Luck Through 12 Weeks","Season Total Luck","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+With a good performance last week and a loss, Olson drops out of the Luck leaderboard. It is mathematically impossible for him to be the luckiest team of all time.
+
+### Kane and (Un)Luck
+```{r,echo = FALSE}
+twelve_weeks_summary %>%
+  ungroup() %>%
+  arrange(luck_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,luck_sum,luck_rank_btm), by = c("year","owner")) %>%
+  select(1,2,4,7,8) %>%
+  `colnames<-`(c("Year","Owner","Luck Through 12 Weeks","Season Total Luck","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+I put up a stinker last week so I couldn't become more unlucky. The single season record is in play, but my opponent is Ready and he has got a lot of guys (Cleveland Browns) on BYE this week so god help me if I don't win this one. 2012 Higdon can keep this record.
+
+
+### Kane and Points Against
+```{r,echo=FALSE}
+twelve_weeks_summary %>%
+  ungroup() %>%
+  arrange(-pa_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,pa_sum,pa_rank), by = c("year","owner")) %>%
+  select(1,2,5,7,8) %>%
+  `colnames<-`(c("Year", "Owner", "Points Against Through 12 Weeks", "Points Against Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+Again, I'm playing Ready and he is unlikely to score 140.8 and give me this terrible record. 2012 Higdon can keep this one too. 
+
+### Harris, Ready and Fewest Total Points
+```{r,echo = FALSE}
+twelve_weeks_summary %>%
+  ungroup() %>%
+  arrange(points_sum) %>%
+  slice(1:8) %>%
+  left_join(.,season_summary %>% select(year,owner,points_sum,points_rank_btm), by = c("year","owner")) %>%
+  select(1,2,6,7,8) %>%
+  `colnames<-`(c("Year", "Owner", "Points Through 12 Weeks", "Points Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+Harris will escape this record with a strong finish to the season. Ready likely will also. He needs to score 31.8 points to avoid this dubious distinction. But Josh McCown has a BYE so we don't know what's going to happen.   
+
+### Harris, Ready and Fewest Proportional Wins
+```{r, echo=FALSE}
+twelve_weeks_summary %>%
+  ungroup() %>%
+  arrange(pw_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,pw_sum,pw_rank_btm), by = c("year","owner")) %>%
+  select(1,2,3,7,8) %>%
+  `colnames<-`(c("Year", "Owner", "PW Through 12 Weeks", "PW Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+
+```
+
+Last year's Thieneman team was an abomination. This year's Harris and Ready are close. I suspect Ken will manage his roster and escape this fate, he needs to score no lower than 10th overall in points to avoid at least a tie of the record. Ready needs to not score lower than 11th, but again his Cleveland Browns have a BYE and I'm not sure he can field a team. 

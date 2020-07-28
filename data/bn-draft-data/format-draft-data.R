@@ -8,7 +8,7 @@ path <- "/home/john/projects/fantasy-football/data/bn-draft-data/"
 
 data_list <- list()
 
-for(i in 1:9){
+for(i in 1:10){
   data_list[[i]] <- read_table(paste0(path,"Draft_",2009+i),col_names = FALSE)
   data_list[[i]]$year <- 2009+i
   if(i <= 6){

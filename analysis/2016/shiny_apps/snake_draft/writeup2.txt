@@ -1,0 +1,49 @@
+Based on intuition you already have. 
+
+E.g. quarterbacks are rarely chosen in the first few rounds because there isn't 
+as much differentiation at the top of the pool.
+
+We all operate with that understanding but don't quantify it.
+
+How easily does your draft strategy have a wrench thrown in it? If someone goes
+off the board earlier than you expected (bad!) or is still available when you're
+selecting (good!) how can you adapt your later round strategies. Can you do so 
+on the fly?
+
+Do you consider BYE weeks for the players. Often during the draft I resign 
+myself to saying, "OK I'll just throw in the towel for Week 7 and Week 11. I'll
+still go 11-2." That thinking is delusional.
+
+I say you need to attempt to win every week!
+
+To do so depends on the particulars of your league, but Matthew Berry /has 
+/written /over and /over about getting to 100 points each week.
+
+That's where my Shiny App can help. It requires some attention but what it does 
+is:
+1) Evaluates all current available players
+2) Considers average draft position and which players are likely to still be 
+around the NEXT time you select* and calculates the drop in points from the 
+players available now to who is likely there the next time. 
+3) Recommends players based on the Value Add to your team relative to everyone 
+else available now and who would be available next time.
+
+In addition:
+1) Seeks to optimize every game's point totals, not just season totals.
+
+It does this by factoring
+
+
+It requires
+1) Initial draft (your pick #) and league (# of starters by position) setup
+2) Entering players as they get drafted by the rest of your league in general,
+and by your team specifically.
+
+After that, the recommendations take care of themselves. 
+
+This tools provides information in real time as you draft.
+
+
+* Or the time after the next
+
+

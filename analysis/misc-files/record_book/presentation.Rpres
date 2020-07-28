@@ -1,0 +1,195 @@
+Bad Newz Record Book
+========================================================
+Brought to you by Stats Corner
+Stats.Corner@gmail.com
+
+Last data update: 
+
+Most Points in a Game
+========================================================
+```{r,echo=FALSE}
+library(googlesheets)
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(knitr)
+sheet <- gs_title("Bad Newz Archives")
+
+
+owner <- sheet %>% gs_read(ws = "Owner-Team Name")
+games <- sheet %>% gs_read(ws = "Regular Season Games")
+
+owner_game <- left_join(games,owner,by=c("year","team"))
+
+## Arrange data and create win, loss and tie variables
+data <- arrange(owner_game,game_id,points)
+data$W <- rep(0,dim(data)[1])
+data$L <- rep(0,dim(data)[1])
+data$T <- rep(0,dim(data)[1])
+data$PA <- rep(0,dim(data)[1])
+data$result <- rep(" ",dim(data)[1])
+
+### Loop to determine winners, and points against
+for(i in seq(from=1,to=dim(data)[1],by=2)){
+    
+    data$PA[i]   <- data$points[i+1]
+    data$PA[i+1] <- data$points[i]
+    
+    data$Opponent[i] <- data$owner[i+1]
+    data$Opponent[i+1] <- data$owner[i]
+    
+    if(data$points[i] < data$points[i+1]){
+        data$L[i] <- 1
+        data$W[i+1] <- 1
+        data$result[i] <- "L"
+        data$result[i+1] <- "W"
+        
+    }
+    if(data$points[i] == data$points[i+1]){
+        data$T[i] <- 1
+        data$T[i+1] <- 1
+        data$result[i] <- "T"
+        data$result[i+1] <- "T"
+    }
+}
+
+
+data <- data %>%
+    arrange(year,week,desc(points)) %>%
+    group_by(year,week) %>%
+    mutate(rk = rank(points,ties.method="min")) 
+
+# Now to calculate and add up proportional wins
+data$pw<- ifelse(data$year==2009,(data$rk-1)/9,(data$rk-1)/11)
+
+
+
+data <- ungroup(data)  %>% arrange(desc(points))
+select(data, year, week, owner, points, Opponent) %>% kable()
+```
+
+Least Points in a Game
+========================================================
+```{r,echo=FALSE}
+data %>% arrange(points)  %>% select(year,week,owner,points,Opponent)
+
+```
+
+
+
+Most Points in a Season
+========================================================
+```{r,echo=FALSE}
+data %>% 
+    group_by(year,owner) %>%
+    summarise(total_points = sum(points)) %>%
+    ungroup() %>%
+    arrange(desc(total_points)) 
+
+```
+
+
+Least Points in a Season
+========================================================
+```{r,echo=FALSE}
+data %>% 
+    group_by(year,owner) %>%
+    summarise(total_points = sum(points)) %>%
+    ungroup() %>%
+    arrange(total_points) 
+
+```
+
+
+All Time Winning %
+========================================================
+```{r,echo=FALSE}
+data %>% 
+    group_by(owner) %>%
+    summarise(W = sum(W),
+              L = sum(L),
+              T = sum(T),
+              total_games = n(),
+              win_pct = round(W/total_games,3)) %>%
+    arrange(desc(win_pct)) %>%
+    select(owner,W,L,T,win_pct)
+
+```
+
+All Time Proportional Win %
+========================================================
+
+```{r, echo=FALSE}
+data %>%
+    group_by(owner) %>%
+    summarise(total_pw = sum(pw),
+              total_games = n(),
+              pw_pct = round(total_pw/total_games,3)) %>%
+    arrange(desc(pw_pct)) %>%
+    select(owner,pw_pct)
+```
+
+
+Career Luck
+========================================================
+Define luck to be:
+     Actual Winning % - Proportional Winning % 
+
+
+Individual Season Luck
+========================================================
+Top Five:
+
+Bottom Five:
+
+
+
+Longest Winning Streak
+========================================================
+
+Longest Losing Streak
+========================================================
+
+
+Most Points in a Loss
+========================================================
+
+Fewest Points in a Win
+========================================================
+
+
+
+Matchup Grid
+========================================================
+```{r, echo=FALSE}
+rivalry_data <- data %>%
+  group_by(owner,Opponent) %>%
+  summarise(wins = sum(W),
+            losses = sum(L),
+            ties   = sum(T)) %>%
+  mutate(record = paste(wins,'-',losses,'-',ties,sep=""))
+
+record_matrix <- dcast(rivalry_data,owner~Opponent,value.var='record')
+
+total_games <- data %>%
+  group_by(owner,Opponent) %>%
+  tally(sort=TRUE)
+
+## Create the playoff rate plot
+ggplot(rivalry_data, aes(x=Opponent,y=owner,label=record)) + 
+  theme_bw() + 
+  geom_text(aes(size=4)) +
+  scale_x_discrete("Opponent") +
+  scale_y_discrete("You", limits=rev(levels(rivalry_data$owner))) +
+  labs(title='Bad Newz Head to Head Records \n (Through Week 7 2014)') +
+  theme(legend.position = 'none',panel.grid.minor=element_line(colour='white'),
+    axis.text.x=element_text(angle=45,hjust=1,size=12),
+    axis.text.y=element_text(size=12))
+```
+
+
+Play around with the data yourself
+========================================================
+Pleased to share all data through the actual spreadsheet on Google Docs, or I've also launched a Web App that allows users to query the data as they please. 
+
+Link: 

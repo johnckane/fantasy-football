@@ -1,0 +1,21 @@
+---
+title: "Week 6 Advanced Leaderboard"
+author: "Stats Corner"
+date: "10/20/2015"
+output: html_document
+---
+contact: Stats.Corner@gmail.com
+
+Click column header to sort
+```{r results='asis',echo=FALSE,message=FALSE}
+library(knitr)
+library(googleVis)
+op <- options(gvis.plot.tag='chart')
+setwd("~/stats_corner/2015/advanced_standings")
+standings4 <- read.csv("standings_week6.csv", header = TRUE, stringsAsFactors = FALSE)
+standings_table <- gvisTable(standings4)
+print(standings_table,'chart')
+```
+
+#### Glossary
+Coming Soon!

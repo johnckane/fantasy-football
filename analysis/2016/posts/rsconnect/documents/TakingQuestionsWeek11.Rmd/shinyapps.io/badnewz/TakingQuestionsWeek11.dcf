@@ -1,0 +1,12 @@
+name: TakingQuestionsWeek11
+title: TakingQuestionsWeek11
+username:
+account: badnewz
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 140331
+bundleId: 1098046
+url: https://badnewz.shinyapps.io/takingquestionsweek11/
+when: 1511753831.0494
+asMultiple: FALSE
+asStatic: FALSE

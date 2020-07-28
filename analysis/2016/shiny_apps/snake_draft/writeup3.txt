@@ -1,0 +1,64 @@
+Introducing the Stats Corner NFL Snake Draft Assistant! 
+
+This application recommends selections based on how much value they add to your
+team relative to the players likely to be available.
+
+It does this by analyzing:
+1) Predicted points per game of every player
+2) Your roster
+3) Average draft position.
+
+Jump to the App here:
+
+Or read the analytical details below.
+
+### Predicted Points Per Game
+This metric is the most straightforward. Many websites produce preseason 
+forecasts of player PPG, the site FantasyFootballAnalytics aggregates those
+predictions and produces a weighted average that historically has been
+the most accurate.
+
+I subscribe to the site, downloaded the data and loaded into the app.
+
+
+### Your Roster
+
+Roster analysis consists of three components: 1. your roster settings,
+2. your current roster, and the BYE weeks of your current roster
+
+###### Roster Settings
+Before you draft, you input the position limits in your starting lineup. 
+For example: 1 QB, 2 RBs, 2 WRs, 1 TE, 1 FLEX, 1 DST and 1 K. The app can handle
+leagues with either FLEX (RB/WR/TE) or OP (QB/RB/WR/TE) positions. 
+
+###### Your current roster 
+As you draft players and input them into the app
+a weekly starting lineup is assembled and the expected number of points scored
+each week is calculated. 
+
+###### Taking BYE weeks into account
+When a player has a BYE, of course they don't play. When your team amasses 
+multiple BYEs in a given week, you'll be stretched thin and likely lose. 
+These recommendations take BYE weeks into account and will elevate players
+who do not have overlapping BYEs with players at the same position. 
+
+### Average Draft Position
+The players that are recommended have their Value Added to your roster 
+calculated. This accounts for your current team as well when their BYE weeks
+fall. 
+
+To make recomendations, the app compares the Value Added by each player against
+who is likely to remain in the draft pool the next time you pick (based on your
+order in the draft sequence). 
+
+By position the player with the highest difference between available now and 
+best player available next time around will be recommended.
+
+The players are ranked according to the difference in Value Added between now
+and the next time you make a selection.
+
+Link to App:
+
+Link to Code: github.com/johnckane/stats_corner/2016/snake_assistant
+
+

@@ -1,0 +1,246 @@
+---
+title: "Keeper Analysis"
+author: "Stats Corner"
+author2: "Can we quantify it? Of course we can"
+output: html_document
+---
+contact: Stats.Corner@gmail.com
+
+There are three types of owners in our league:
+
+1.  The owner who is plotting his keepers before the end of the previous regular season (Regan, Ready, Harrington, Olson, D'Skae).
+
+2.  The owner who starts thinking sometime during the summer who he's going to keep (Kane, McShane, Hartman, Higdon).
+
+3.  The owner who decides the morning of the draft who he's keeping (Thieneman, Matovina).
+
+Whoops, I'm sorry four types:
+
+4.  The owner who thinks he's pulling a fast one on everyone by lying about who he's keeping as if everyone has organized their draft strategy around Teddy Bridgewater being off the board, then ends up up paying a late fee for switching it after the deadline passes (Ola).
+
+I bring this up because I have come to believe that keeper selection is **the** most important decision you will make as an owner in any given year. As a preview to the rest of the post consider this: Russell Wilson cost D'Skae $22 this year. My estimates for his draft value was somewhere around $58. Jeremy Hill cost him $8, whereas my estimate for what Jeremy Hill would have gone for was $73. So D'Skae saved $101 using his keepers this year. Effectively his draft cash was $401, not $300. What was yours?
+
+Things to keep in mind:
+
+- I have adjusted keeper values to reflect what they actually cost the owner. This means:
+    +   Any alterations based on draft cash swapped in trades is not applied.
+    +   Even if Hartman didn't properly account for them in the final salary selection I will have done so here.
+- As the council-of-draft-attenders can attest, my predictions for QBs, especially the top ones, were underestimated. I haven't (yet) corrected my model. 
+- These values reflect what I think the players would have been drafted for, not what I think they're actually worth. 
+- Estimated draft values don't take into account the "Desperation Factor" that goes into drafting guys, particularly QBs as the last of the top tier guys go off the board. How else do you explain Eli going for $60 this year?
+
+I will not give away too much of my methodology apart from saying I used a [slightly more sophisticated technique](https://en.wikipedia.org/wiki/Local_regression) than you would have seen in your stats class. 
+
+## Best and Worst Keeper Selections ##
+#### The Top 10 Best Keeper Selections, Based on Dollars Saved ####
+```{r, echo=FALSE, message=FALSE}
+library(dplyr)
+library(knitr)
+setwd("/home/john/stats_corner/2015/keeper_analysis/")
+
+keepers <- read.csv("keepers.csv", header = TRUE, stringsAsFactors = FALSE)
+keepers <- keepers %>%
+    mutate(est_cost2 = round(est_cost),
+           adj_value2 = round(adj_value),
+            savings = est_cost2 - adj_value2)
+# Most valuable keepers ever #
+keepers %>% arrange(desc(savings)) %>% select(c(1,2,3,4,10,11,9)) %>% slice(1:10) %>% 
+    `colnames<-`(c("Owner","Year","Player","Position","Estimated Cost","Kept Value","Savings")) %>% kable()
+```
+
+Lot's of Arian Foster in here. Ola certainly rode that $2 pickup for a long time. Also, shout out to Mike Vick.
+
+#### The Top 10 Worst Keeper Selections, Based on Dollars Saved ####
+```{r, echo=FALSE, message=FALSE}
+keepers %>% arrange(savings) %>% select(c(1,2,3,4,10,11,9)) %>% slice(1:10) %>% 
+    `colnames<-`(c("Owner","Year","Player","Position","Estimated Cost","Kept Value","Savings")) %>% kable()
+```
+
+Yuck. Josh Freeman. Interesting and important to note that with the exception of Freeman these picks are bad because the owners kept them at values close to market rate. It's an easy way to ensure you retain that player, but in many cases you could get them for close to what it would have cost to keep.
+
+## Cumulative Player Savings ##
+Especially with the best selections, we see a few players show up time and again. We can guess at this point which player has resulted in the most cumulative savings for their owners, but what about the rest of the field?
+
+#### Highest Cumulative Savings by Player ####
+```{r, echo=FALSE, message = FALSE}
+keepers %>%
+    group_by(player) %>%
+    summarise(total_savings = sum(savings),
+              times_kept = n(),
+              dif_owners = n_distinct(owner)) %>%
+    arrange(desc(total_savings)) %>%
+    slice(1:10) %>%
+    `colnames<-`(c("Player","Total Savings","Times Kept","# of Different Owners")) %>%
+    kable()
+
+```
+
+What I find the most interesting here is that our #2 cumulative savings player, LeSean McCoy, also ranks as the 9th worth individual keeper selection of all time. This year Ready paid $3 above what he could have expected to pay on the open market. 
+
+#### Lowest Cumulative Savings by Player ####
+```{r, echo=FALSE, message = FALSE}
+keepers %>%
+    group_by(player) %>%
+    summarise(total_savings = sum(savings),
+              times_kept = n(),
+              dif_owners = n_distinct(owner)) %>%
+    arrange(total_savings) %>%
+    slice(1:10) %>%
+    `colnames<-`(c("Player","Total Savings","Times Kept","# of Different Owners")) %>%
+    kable()
+
+```
+
+What I like about this table is that it has a lot of good players on it. They just aren't good keeper selections. It is kind of strange that Josh Freeman, by far the worst one-time keeper selection of all time, isn't in the bottom 10 of cumulative savings. That's because back in 2011 D'Skae kept him for $7 when I have him estimated to go for $44 (a $37 savings). This means ol' Josh Freeman has a lifetime cumulative keeper savings of $18. 
+
+## Cumulative Owner Rankings ##
+#### Owners Ranked by Total Savings ####
+```{r, echo=FALSE, message = FALSE}
+keepers %>%
+    group_by(owner) %>%
+    summarise(total_savings = sum(savings)) %>%
+    arrange(desc(total_savings)) %>%
+    `colnames<-`(c("Owner","Cumulative Savings")) %>%
+    kable()
+    
+```
+
+Ola leads the list here. Fueled by years of keeping Arain Foster and Eddie Lacy. 
+
+## Looking at Effective Draft Cash ##
+As I touched on at the top of this post, D'Skae effectively had $401 to work with for this year's draft. How does that stack up to other guys this year, or any team from the past four years? To attempt to give some context for the ultimate performance of these teams I've included their year-end ranking in proportional wins. 
+
+#### Most Effective Draft Cash ####
+```{r, echo=FALSE, message = FALSE}
+### Fold in prop wins ###
+library(googlesheets)
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+sheet <- gs_title("Bad Newz Archives")
+
+
+owner <- sheet %>% gs_read(ws = "Owner-Team Name")
+games <- sheet %>% gs_read(ws = "Regular Season Games")
+
+owner_game <- left_join(games,owner,by=c("year","team"))
+
+## Arrange data and create win, loss and tie variables
+data <- arrange(owner_game,game_id,points)
+data$W <- rep(0,dim(data)[1])
+data$L <- rep(0,dim(data)[1])
+data$T <- rep(0,dim(data)[1])
+data$PA <- rep(0,dim(data)[1])
+data$result <- rep(" ",dim(data)[1])
+
+### Loop to determine winners, and points against
+for(i in seq(from=1,to=dim(data)[1],by=2)){
+    
+    data$PA[i]   <- data$points[i+1]
+    data$PA[i+1] <- data$points[i]
+    
+    data$Opponent[i] <- data$owner[i+1]
+    data$Opponent[i+1] <- data$owner[i]
+    
+    if(data$points[i] < data$points[i+1]){
+        data$L[i] <- 1
+        data$W[i+1] <- 1
+        data$result[i] <- "L"
+        data$result[i+1] <- "W"
+        
+    }
+    if(data$points[i] == data$points[i+1]){
+        data$T[i] <- 1
+        data$T[i+1] <- 1
+        data$result[i] <- "T"
+        data$result[i+1] <- "T"
+    }
+}
+
+
+data <- data %>%
+    arrange(year,week,desc(points)) %>%
+    group_by(year,week) %>%
+    mutate(rk = rank(points,ties.method="min")) 
+
+# Now to calculate and add up proportional wins
+data$pw<- ifelse(data$year==2009,(data$rk-1)/9,(data$rk-1)/11)
+data <- ungroup(data)  %>% arrange(desc(points))
+#select(data, year, week, owner, points, Opponent)
+#data <- filter(data, year != 2015)
+
+## season pw totals ##
+pw_totals <- data %>%
+    group_by(owner,year) %>%
+    summarise(total_pw = sum(pw)) %>%
+    ungroup() %>%
+    group_by(year) %>%
+    mutate(pw_rank = rank(-total_pw,ties.method="min"))
+
+pw_totals$owner <- ifelse(pw_totals$owner == 'Skrzyszewski',
+                          'Skrzyskewski',
+                          pw_totals$owner)
+
+keeper_pw <- inner_join(keepers,pw_totals, by = c("owner","year"))
+#anti_join(keepers,pw_totals,by=c("owner","year"))
+
+# effective draft cash all time #
+a<-keepers %>%
+    group_by(owner,year) %>%
+    summarise(total_savings = sum(savings),
+              effective_draft_cash = 300 + total_savings) %>%
+    ungroup() %>%
+    arrange(desc(effective_draft_cash)) %>%
+    slice(1:10) %>% 
+    left_join(.,pw_totals,by = c("owner","year"))
+a$pw_rank <- ifelse(a$year == 2015,
+                    NA,
+                    a$pw_rank)
+a <- a %>% select(1,2,4,6)
+colnames(a) <- c("Owner", "Year","Effective Draft Cash","PW Rank" )
+kable(a)
+```
+
+Note D'Skae coming in that fifth spot. His PW Rank is TBD. 
+
+#### Least Effective Draft Cash ####
+```{r, echo=FALSE, message = FALSE}
+
+b<- keepers %>%
+    group_by(owner,year) %>%
+    summarise(total_savings = sum(savings),
+              effective_draft_cash = 300 + total_savings) %>%
+    ungroup() %>%
+    arrange(effective_draft_cash) %>%
+    slice(1:10) %>%
+    left_join(.,pw_totals,by = c("owner","year"))
+b$pw_rank <- ifelse(b$year == 2015,
+                    NA,
+                    b$pw_rank)
+b <- b %>% select(1,2,4,6)
+colnames(b) <- c("Owner", "Year","Effective Draft Cash","PW Rank" )
+kable(b)
+```
+
+Note here how three 2015 teams are on the list. Only time will tell how they fare.
+
+#### The Relationship between Effective Draft Cash and PW ####
+I included PW Rank in each of the above tables because I thought there would be some relationship between the two. Neither of those tables seem to indicate that there is. In fact, the correlation between Effective Draft Cash and Season Ending PW Rank is rather weak, just about -0.2. So just having the draft cash is one thing, knowing how to use it something else entirely...
+
+
+#### Oh Well. 2015 Effective Draft Cash Rankings ####
+```{r, echo=FALSE, message=FALSE}
+c <- keepers %>%
+    filter(year == 2015) %>%
+    group_by(owner)%>%
+    summarise(total_savings = sum(savings),
+              effective_draft_cash = 300 + total_savings) %>%
+    ungroup() %>%
+    arrange(desc(effective_draft_cash)) %>%
+    select(1,3)
+colnames(c) <- c("Owner", "Effective Draft Cash")
+kable(c)
+
+```
+
+

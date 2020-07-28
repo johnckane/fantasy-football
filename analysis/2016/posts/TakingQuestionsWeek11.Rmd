@@ -1,0 +1,452 @@
+---
+title: 'Taking Questions: Week 11'
+author: "Stats Corner"
+runtime: shiny
+date: "November 26, 2016"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+library(googlesheets)
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(knitr)
+library(ggplot2)
+library(shiny)
+workbook <- gs_url("https://docs.google.com/spreadsheets/d/1c24qtCDF6MnL1I-nNG2ovymFB3fYj1NsWpLe3SGCbJs/pubhtml")
+
+owner <- workbook %>% gs_read(ws = "Owner-Team Name")
+games <- workbook %>% gs_read(ws = "Regular Season Games")
+
+owner_games <- left_join(games,owner,by=c("year","team"))
+
+data <- arrange(owner_games,game_id,points)
+data$W <- rep(0,dim(data)[1])
+data$L <- rep(0,dim(data)[1])
+data$T <- rep(0,dim(data)[1])
+data$PA <- rep(0,dim(data)[1])
+data$result <- rep(" ",dim(data)[1])
+data$last_of_streak <- rep(0,dim(data)[1])
+data$opponent <- rep(" ",dim(data)[1])
+games_played <- data %>% filter(points > 0)
+### Loop to determine winners, and points against
+for(i in seq(from=1,to=dim(games_played)[1],by=2)){
+  
+  games_played$PA[i]   <- games_played$points[i+1]
+  games_played$PA[i+1] <- games_played$points[i]
+  
+  games_played$opponent[i] <- games_played$owner[i+1]
+  games_played$opponent[i+1] <- games_played$owner[i]
+  
+  if(games_played$points[i] < games_played$points[i+1]){
+    games_played$L[i] <- 1
+    games_played$W[i+1] <- 1
+    games_played$result[i] <- "L"
+    games_played$result[i+1] <- "W"
+    
+  }
+  if(games_played$points[i] == games_played$points[i+1]){
+    games_played$T[i] <- 1
+    games_played$T[i+1] <- 1
+    games_played$result[i] <- "T"
+    games_played$result[i+1] <- "T"
+  }
+  
+}
+
+
+games_played <- games_played %>%
+  filter(year <= 2016) %>%
+  arrange(year,week,desc(points)) %>%
+  group_by(year,week) %>%
+  mutate(rk = rank(points,ties.method="min"),
+         opp_rk = rank(PA,ties.method="min")) 
+
+# Now to calculate and add up proportional wins
+games_played$pw<- ifelse(games_played$year==2009,(games_played$rk-1)/9,(games_played$rk-1)/11)
+games_played$opp_pw <- ifelse(games_played$year==2009,(games_played$opp_rk-1)/9,(games_played$opp_rk-1)/11)
+
+```
+
+
+```{r, include = FALSE, echo = FALSE}
+extremes <- 
+  games_played %>%
+  filter((year > 2009 & (rk == 10 & W == 0 | rk == 2 & W == 1)) | (year == 2009 & (rk == 9 & W == 0 | rk == 2 & W == 1))) 
+
+extremesX2 <- 
+  games_played %>%
+  filter((year > 2009 & (rk == 10 & W == 0 | rk == 2 & W == 1)) | (year == 2009 & (rk == 9 & W == 0 | rk == 2 & W == 1))|
+         (year > 2009 & ((rk == 9 & W == 0 | rk == 3 & W == 1)) | (year == 2009 & (rk == 8 & W == 0 | rk == 3 & W == 1 )))) 
+
+```
+
+
+Big thanks to Luke for asking some very good questions. I realize I rely heavily on Proportional Wins (rather than wins or points) for assessing fantasy football performance. I first introduced this metric a few years ago back when Stats Corner lived in successive message board posts. I've taken for granted ever since that it was clear how this metric is calculated and why it is superior to some of the other metrics. Also, Ken is here so it makes sense to re-introduce it.
+
+#### Why wins and losses aren't a good metrics
+There is no such thing as playing defense in fantasy football; you can't stop your opponent from scoring points. Last week, Harrington lost to Hartman despite scoring the second most points in the league and Regan beat Ready despite scoring the second fewest. Should Harrington go into panic mode from losing? Should Regan let his chest swell with the pride from victory? Clearly not. In the history of our league (from Week 1 in 2009 through Week 11 in 2016) we've had 599 games played. In 30 of those games we've had a situtaion like the ones we experienced last week. Admittedly these are rare cases; they occur only about 4 times per year, on average. If you expand the universe to scoring the third most points and losing, or scoring the third fewest and winning and we're up to about 14% of the time or 11 times per season (slightly less than once/week). As we climb the ladder of unlikely outcomes (scoring a lot and losing, scoring little but winning) these cases are more and more prevalant. How should we reward good performance and punish poor performance? 
+
+#### Enter Proportional Wins (PW)
+Proportional Wins are distributed on a weekly basis to every team. For any given team in any given week the amount of PW they receive is determined by:
+
+PW = % of teams in a given week you would have beaten, regardless of whether or not you won your scheduled match. 
+
+There are 12 teams in the league so for each of us individually there are 11 other teams we could have played. How many of those other 11 teams would you beat each week had you been scheduled to play them instead of who you actually played?
+
+For example: if you score the most points in a week you would have beaten all 11 of the other teams in the league. 11/11 = 1, so you earn 1 PW. Had you scored the second highest point total in a given week you would have beaten 10 of the 11 others, had you been scheduled to play them, and be awarded 10/11 = 0.91 PW. And so on and so forth all the way down to the team who scores the fewest amount of points and would have beaten none of the other teams had they played. They are awared 0/11 = 0 PW. 
+
+PW does a few things:
+
+**Conserves Total Wins in a Week.** Every week there are only 6 wins to be earned, if we forget about ties. PW has the same property. Wins are given out to 6 teams and 6 teams only, whereas the 6 PW are distributed unevenly to 12 teams (lowest scoring team earns 0). An alternative to PW that I've considered would be to assign each team each week a value corresponding to the probability they would have won their game (based on league history, more details below), but that would not conserve total wins.
+
+**Awards Consistency Throughout the Season.** Especially early in the season some extreme point totals (either high or low) can heavily influence the points leaderboard. The maximum amount of PW earned is always 1 and the minimum is always 0. This season the team earning the full 1 PW has varied from between 120.1 to 164. While the low end has varied from 33.3 to 81.4. By constraining the amount of the metric available only teams who consistently place on the high end of the point totals will accumulate PW. 
+
+**Interpreting.** I think the best interpretation of PW is the number of wins a team earns, independent of their schedule. 
+
+```{r,include = FALSE,echo=FALSE}
+games_played %>% filter(year == 2016) %>%
+  group_by(week) %>%
+  summarise(maxp = max(points),
+            minp = min(points))
+#how often is the points champion also the PW champion?
+season_summary <- games_played %>%
+  filter(year != 2016) %>%
+  ungroup() %>%
+  mutate(luck = W - pw) %>%
+  group_by(year,owner) %>%
+  summarise(pw_sum = sum(pw),
+            luck_sum = sum(luck),
+            points_sum = sum(points),
+            pa_sum = sum(PA),
+            sos = mean(opp_pw)) %>%
+  ungroup() %>%
+  mutate(pw_rank = dense_rank(-pw_sum),
+         pw_rank_btm = dense_rank(pw_sum),
+         luck_rank_top = dense_rank(-luck_sum),
+         luck_rank_btm = dense_rank(luck_sum),
+         points_rank = dense_rank(-points_sum),
+         pa_rank = dense_rank(-pa_sum),
+         points_rank_btm = dense_rank(points_sum),
+         sos_rank = dense_rank(-sos))
+season_summary %>%
+  ungroup() %>%
+  group_by(year) %>%
+  mutate(pw_rank = dense_rank(-pw_sum),
+         points_rank = dense_rank(-points_sum)) %>%
+  arrange(pw_rank) %>%
+  slice(1) %>%
+  select(year,owner,pw_sum,pw_rank,points_sum,points_rank)
+```
+
+#### What about total points scored?
+This is a fine metric. As stated above, the leaderboard especially early in the season is subject to extreme values having too much influence. By the end of the year there is little distinction between total points and PW. In fact, in every season in this league's history the team who won the points title also won the PW title. But the advantages PW provides (schedule independent, robust to extreme weeks) make this an "Advanced Analytics" metric. 
+
+#### Measuring Luck
+Last week Regan won playing against Ready. He won because he happened to play the only team he outscored. Instead of being 6-5 with a 64% chance of making the playoffs he would be 5-6 with his playoff chances at 20%. Regan got the full W, but scoring enough to only beat 1 out of the 11 other teams he earns 1/11 = 0.09 PW. 
+
+His score earned him only 0.09 PW but he gets the full 1 Win. That's a difference of 1 - 0.09 = 0.91 in Luck. 
+
+On the flip side, Harrington lost because he happened to play the only team who outscored him. It likely won't affect his playoff chances, but still he outscored 10/11 opponents, good for 0.91 PW, but loses, so he ends up with 0 - 0.91 = -0.91 Luck for the week.
+
+So by measuring the difference between how many matches you've won, and how many you've earned independent of the schedule, we get a measure of Luck. Regan was lucky to win that game last week. Just like Harrington was unlucky to lose.
+
+The total amount of luck each season __always__ adds to 0, as a consequence of how it's calculated and what it's calculated from. The differences in luck between teams is usually negligible. Usually...
+
+#### 2016 Has Been A Weird Year
+Some [good](https://www.youtube.com/watch?v=OqsTb5eWSQA), some [bad](https://goo.gl/4KzRrQ). 
+
+But I digress. 
+
+This season we've been treated to several outlier seasons. Olson on the lucky side, myself on the unlucky side. 53% of all seasons have a luck value between -1 and 1, and 87% have values between -2 and 2. Including this year's games up through Week 11, here are the luck season totals. 
+
+```{r, echo = FALSE}
+luck_summary <- games_played %>%
+  filter(week <= 11) %>%
+  ungroup() %>%
+  mutate(luck = W - pw) %>%
+  group_by(year,owner) %>%
+  summarise(luck_sum = sum(luck)) %>%
+  ungroup() 
+plot0 <- ggplot(data = luck_summary,
+                aes(x = luck_sum))
+plot0 + 
+  geom_dotplot(binwidth = 0.1,
+               dotsize = 3) +
+  scale_x_continuous("Total Luck", breaks = c(-4:4)) +
+  scale_y_continuous("Count", breaks = seq(from = 0, to = 0.1, by = 0.01), labels = NULL, limits = c(0,0.1)) +
+  geom_dotplot(data = filter(luck_summary, owner == "Kane", year == 2016), fill = "red", dotsize = 3, binwidth = 0.1) +
+  geom_dotplot(data = filter(luck_summary, owner == "Olson", year == 2016), fill = "blue", dotsize = 3, binwidth = 0.1) +
+  ggtitle("Season Luck Totals Through 11 Weeks",
+          subtitle = "League History; Kane and Olson 2016 Seasons Highlighted") +
+  # theme(title = element_text(size = 20)) +
+  annotate("text", x = -3.1, y = 0.025, label = "Kane", color = "red", size = 6) +
+  annotate("text", x = 3, y = 0.025, label = "Olson", color = "blue", size = 6)
+
+```
+
+
+```{r,echo=FALSE,include = FALSE}
+luck_summary %>%
+  ungroup() %>%
+  mutate(abs_le_1 = ifelse(abs(luck_sum) <= 1,1,0),
+         abs_le_2 = ifelse(abs(luck_sum) <= 2,1,0)) %>%
+  summarise(how_many1 = sum(abs_le_1)/n(),
+            how_many2 = sum(abs_le_2)/n())
+
+```
+
+
+
+All this is not to say that Luke doesn't have a good team. He's performed at the level of a 6-5 team thus far. Certainly deserving of the playoff spot he's already locked up. Will his lucky streak carry him to a "bye" in the first round? Probably. It's better to be lucky __and__ good. 
+
+## Now that that's out of the way, let's take some questions.
+```{r, echo = FALSE,include =FALSE}
+season2016 <- filter(games_played, year == 2016)
+plot1 <- ggplot(data = season2016,
+                aes(x = week,
+                    y = points,
+                    shape = as.factor(W)))
+plot1 + 
+  geom_point() +
+  scale_x_continuous("Week", breaks = c(1:11)) +
+  geom_line(data = season2016 %>% ungroup() %>% filter(rk == 6),
+            aes(x = week, y = points),
+            linetype = 2) +
+  # geom_point(data = season2016 %>% filter(owner == "Olson") %>% select(week,points,W),
+  #            aes(week,points),
+  #            colour = 'red') +
+  # geom_point(data = season2016 %>% filter(owner == "Hartman") %>% select(week,points,W),
+  #           aes(week,points),
+  #           colour = 'blue') +
+  ggtitle("Points Scored By Week", 
+          subtitle = "Olson in Red, Hartman in Blue, Dashed Line is Weekly Median") +
+  guides(legend.position = NULL)
+  
+
+
+```
+
+
+#### "...I'm interested in whether week-to-week consistency is taken into account to proportionate wins... usually you don't need to score 160 to win, 110-120 will usually do it. So it would seem like better week-to-week consistency would improve win totals. Is this factored into the PWs and Luck?"
+
+Indeed it is, and that's one of the features of PW. PW does not incentivize scoring 150 when 120 or 110 would have won the week. 
+
+The amount of points needed to win every week changes, because it depends on the scores of other teams. Play around with the app below. It features the scores of every team by week, with a dotted line going through the team that scored the 6th most points, which is the amount of points you would need to score to have a 50% chance of winning. This year that value has averaged 101.6, but has ranged from 91.5 to 111.9. Different shapes indicate whether or not a team won or lost, and the selected owner appears in red.
+
+```{r,echo=FALSE}
+owners <- games_played %>% filter(year == 2016) %>% group_by(owner) %>% select(owner) %>% slice(1)
+season2016 <- filter(games_played, year == 2016) %>% ungroup() 
+season2016_rk6 <- season2016 %>% ungroup() %>% filter(rk == 6)
+
+#season2016_rk6 %>% summarise(meanp = mean(points), minp = min(points), maxp = max(points))
+
+shinyApp(
+  
+  ui = fluidPage(
+    selectInput("owner", 
+                label = h3("Select an Owner"), 
+                choices = owners, 
+                selected = "Olson"),
+    plotOutput("game_plot")
+  ),
+  
+  server = function(input, output) {
+    output$game_plot <- renderPlot({
+      # ggplot(data = season2016,
+      #           aes(x = week,
+      #               y = points,
+      #               shape = as.factor(W))) +
+      # geom_line(data = season2016 %>% ungroup() %>% filter(rk == 6) %>% ungroup(),
+      #          aes(x = week, y = points),
+      #          linetype = 2) +
+      ggplot(data = season2016_rk6,
+             aes(x = week, y = points)) +
+        geom_line(linetype = 2) +
+        geom_point(data = season2016,
+                   aes(x = week, y = points,shape = as.factor(W)),
+                   colour = 'black',
+                   size = 5) +
+      # geom_point(size = 5) +
+      geom_point(data = season2016 %>% ungroup() %>% filter(owner == input$owner),
+        aes(x=week,y=points,shape =as.factor(W)),
+        colour = 'red',
+        size= 5)  +
+      theme(legend.position = c(0.1,0.2),
+            axis.text.x = element_text(size = 14),
+            axis.text.y = element_text(size = 14),
+            axis.title.y = element_text(size = 14),
+            axis.title.x = element_text(size = 14),
+            legend.direction = "horizontal",
+            title = element_text(size = 20),
+            legend.text = element_text(size = 12)) +
+      scale_y_continuous("Points", limits = c(30,175), breaks = seq(from=30,to=170,by=20)) +
+      scale_x_continuous("Week", breaks = c(1:11)) +
+      ggtitle("Points Scored by Week with 50/50 Cutoff",
+              subtitle = "Red = Selected Owner") +
+      scale_shape_discrete("",labels = c("Loss","Win"),
+                           guide = guide_legend(override.aes = list(
+                                               colour = 'black')))
+
+    })
+  }
+)
+```
+
+#### "I actually would be interested in seeing the graph of likelihood of victory based on points scored."
+To answer this question, I'll use a simple but effective technique called [Logistic Regression](https://en.wikipedia.org/wiki/Logistic_regression). This will be a really simple model, measuring the probability of winning a game based on points scored alone. For those interested in such things the [area under the ROC curve](https://en.wikipedia.org/wiki/Receiver_operating_characteristic#Area_under_the_curve) was just under 0.82, indciating a pretty good but not fool proof fit.
+
+Note: The dots are [jittered](http://thomasleeper.com/Rcourse/Tutorials/jitter.html) to give an idea of the amount of data at each value of points scored. The proabilities on the left-side y-axis refer to the smoothed line fit and the right-side y-axis are the reference for the dotted values.
+
+```{r, echo = FALSE}
+logistic_fit <- glm(data = games_played,
+                    W ~ points,
+                    family = 'binomial')
+
+#library(pROC)
+#auc(logistic_fit$data$W,logistic_fit$fitted.values)
+points = seq(from = min(games_played$points),
+               to = max(games_played$points),
+               by = 1)
+predicted_win = exp(logistic_fit$coef[1] + logistic_fit$coef[2]*points)/
+  (1 + exp(logistic_fit$coef[1] + logistic_fit$coef[2]*points))
+
+logistic_plot <- ggplot(data = games_played,
+                        aes(x = points, y = W)
+)
+
+logistic_plot +
+  geom_jitter(width = 0,
+              height = 0.05) +
+  scale_y_continuous("P(Win)",
+                     breaks = seq(from=0,to=1,by=0.1),
+                     sec.axis = sec_axis(trans = ~.,
+                                         breaks = c(0,1),
+                                         label = c("No","Yes"),
+                                         name = "Actually Win?")) +
+  geom_line(data = data.frame(points = points,W = predicted_win),
+            aes(x = points, y = W)) +
+  scale_x_continuous("Points Scored",
+                     breaks = seq(from = 25, to = 175, by = 25)) +
+  ggtitle("Proability of Winning by Points Scored",
+          subtitle = "Dots Indicate Games, Line is Model Prediction")
+```
+
+Not sure what the point of interest is exactly, but the 50/50 point, where if you score that amount of points you are just as likely to win as lose, is 103.0 points. This isn't far off from the average value needed to have a 50% chance of winning this year, which was determined above to be 101.6 without needing to model the data. 
+
+## Record Chasing
+```{r,echo=FALSE,include = FALSE}
+
+
+eleven_weeks <- games_played %>% filter(week <= 11)
+eleven_weeks_summary <- eleven_weeks %>%
+  ungroup() %>%
+  mutate(luck = W - pw) %>%
+  group_by(year,owner) %>%
+  summarise(pw_sum = sum(pw),
+            luck_sum = sum(luck),
+            pa_sum = sum(PA),
+            points_sum = sum(points))
+
+eleven_weeks_summary %>%
+  ungroup() %>%
+  arrange(-pw_sum) %>%
+  slice(1:10) %>%
+  left_join(.,season_summary %>% select(year,owner,pw_sum,pw_rank), by = c("year","owner")) %>%
+  select(1,2,3,5,6) %>%
+  `colnames<-`(c("Year", "Owner", "PW Through 10 Weeks", "PW Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+
+```
+
+
+
+### Hartman and Proportional Wins
+```{r,echo=FALSE}
+eleven_weeks_summary %>%
+  ungroup() %>%
+  arrange(-pw_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,pw_sum,pw_rank), by = c("year","owner")) %>%
+  select(1,2,3,7,8) %>%
+  `colnames<-`(c("Year", "Owner", "PW Through 10 Weeks", "PW Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+
+### Hartman and Total Points
+```{r, echo = FALSE}
+eleven_weeks_summary %>%
+  ungroup() %>%
+  arrange(-points_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,points_sum,points_rank), by = c("year","owner")) %>%
+  select(1,2,6,7,8) %>%
+  `colnames<-`(c("Year", "Owner", "Points Through 11 Weeks", "Points Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+### Olson and Luck
+```{r, echo = FALSE}
+eleven_weeks_summary %>%
+  ungroup() %>%
+  arrange(-luck_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,luck_sum,luck_rank_top), by = c("year","owner")) %>%
+  select(1,2,4,7,8) %>%
+  `colnames<-`(c("Year","Owner","Luck Through 10 Weeks","Season Total Luck","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+### Kane and (Un)Luck
+```{r,echo = FALSE}
+eleven_weeks_summary %>%
+  ungroup() %>%
+  arrange(luck_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,luck_sum,luck_rank_btm), by = c("year","owner")) %>%
+  select(1,2,4,7,8) %>%
+  `colnames<-`(c("Year","Owner","Luck Through 10 Weeks","Season Total Luck","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+### Kane and Points Against
+```{r,echo=FALSE}
+eleven_weeks_summary %>%
+  ungroup() %>%
+  arrange(-pa_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,pa_sum,pa_rank), by = c("year","owner")) %>%
+  select(1,2,5,7,8) %>%
+  `colnames<-`(c("Year", "Owner", "Points Against Through 11 Weeks", "Points Against Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+### Harris, Ready and Fewest Total Points
+```{r,echo = FALSE}
+eleven_weeks_summary %>%
+  ungroup() %>%
+  arrange(points_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,points_sum,points_rank_btm), by = c("year","owner")) %>%
+  select(1,2,6,7,8) %>%
+  `colnames<-`(c("Year", "Owner", "Points Through 11 Weeks", "Points Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+### Harris, Ready and Fewest Proportional Wins
+```{r, echo=FALSE}
+eleven_weeks_summary %>%
+  ungroup() %>%
+  arrange(pw_sum) %>%
+  slice(1:5) %>%
+  left_join(.,season_summary %>% select(year,owner,pw_sum,pw_rank_btm), by = c("year","owner")) %>%
+  select(1,2,3,7,8) %>%
+  `colnames<-`(c("Year", "Owner", "PW Through 11 Weeks", "PW Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+
+```
+

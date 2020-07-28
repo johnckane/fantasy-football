@@ -1,0 +1,65 @@
+Maximize Weekly PPG With this Shiny App
+
+Days (really though weeks, actually months if you're reading this) of 
+fantasy football draft preparation seem to be meaningless if a wrench is thrown
+into your plans.
+
+1) You were banking on drafting a player but he slips off the board early.
+2) A player you like but thought would be gone when you picked is still 
+available.
+
+Either way, you have to be flexible when drafting.
+
+There are some things we can know: 
+generally who will be available in each round. 
+how that player can optimize your current roster
+
+I think many people ignore BYE weeks when they draft. They shouldn't. If your 
+top players have overlapping BYE weeks then you're essentially giving up. 
+
+Fantasy Football is a fickle game. You are at the mercy of the schedule. You
+can score the 2nd most points in your league and lost, or score the second 
+fewest and win. 
+
+What matters is consistency. Matthew Berry suggests getting to 100 points/week
+for most standard scoring ESPN leagues. That's an easy calculation when you base
+it off of PPG by player, but every player will sit out at least their BYE week.
+
+How can you get to 100/week every week if you don't know how BYE weeks overlap?
+
+That's the problem I intend to help answer with the Shiny App. 
+
+This Shiny App:
+1) Evaluates your current roster
+2) Iteratively adds each available player to your roster, calculates the average
+points per game added by that player, then recommends players by position by 
+comparing the points added by that player to the best player we think (based on 
+ADP) will be available the NEXT time you draft
+3) Recomendations provided by position and sorted by descending value. 
+
+
+
+
+Can Handle:
+Any roster size
+Either Flex/OP but not both. Should it be both?
+Recs based on availability in two picks (useful for people at beginning/end 
+of rounds)
+
+
+Realistically this:
+1) Requires dual monitors or laptop/phone // laptop/tablet. You need to see the
+screen as well as the draft application.
+2) Vigilant updating. This requires manually entering players as they get 
+drafted as well as as you draft them. This does not sit on top of your actual
+draft app. 
+
+
+Relies on data from:
+- third party site for PPG and ADP
+- if the PPG data is wrong, oh well! can't do anything about that.  
+
+
+A note on timing: Yes, fantasy football won't reenter the lexicon in full force
+until August, but I've been noodling with this idea for months now. I want to 
+share it now and update it with more data in August 2017. 

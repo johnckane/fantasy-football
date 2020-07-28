@@ -1,0 +1,312 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+load("/home/john/projects/fantasy-football/data/analysis-data/wr.Rda")
+```
+
+
+```{r}
+yoy_top <- 
+wr %>%
+  filter(is.na(league_rank) == FALSE) %>%
+  mutate(top40 = ifelse(league_rank <= 40,1,0),
+         top20 = ifelse(league_rank <= 20,1,0),
+         top10 = ifelse(league_rank <= 10,1,0),
+         top5  = ifelse(league_rank <= 5,1,0)) %>%
+  mutate(top40_first8 = ifelse(league_rank_first8 <= 40,1,0),
+         top40_last8 = ifelse(league_rank_last8 <= 40,1,0),
+         top20_first8 = ifelse(league_rank_first8 <= 20,1,0),
+         top20_last8 = ifelse(league_rank_last8 <= 20,1,0),
+         top10_first8 = ifelse(league_rank_first8 <= 10,1,0),
+         top10_last8 = ifelse(league_rank_last8 <= 10,1,0),
+         top5_first8 = ifelse(league_rank_first8 <= 5,1,0),
+         top5_last8 = ifelse(league_rank_last8 <= 5,1,0)) %>%
+  arrange(player,year) %>%
+  group_by(player) %>%
+  mutate(top40_lastyear = ifelse(lag(year) == year - 1, lag(top40),NA),
+         top20_lastyear = ifelse(lag(year) == year - 1, lag(top20),NA),
+         top10_lastyear = ifelse(lag(year) == year - 1, lag(top10),NA),
+         top5_lastyear  = ifelse(lag(year) == year - 1, lag(top5),NA),
+         team_rank_lastyear = ifelse(lag(year) == year - 1,lag(team_rank),NA),
+         league_rank_lastyear = ifelse(lag(year) == year - 1,lag(league_rank),NA),
+         top40_first8_lastyear = ifelse(lag(year) == year - 1, lag(top40_first8),NA),
+         top40_last8_lastyear  = ifelse(lag(year) == year - 1, lag(top40_last8),NA),
+         top20_first8_lastyear = ifelse(lag(year) == year - 1, lag(top20_first8),NA),
+         top20_last8_lastyear  = ifelse(lag(year) == year - 1, lag(top20_last8),NA),
+         top10_first8_lastyear = ifelse(lag(year) == year - 1, lag(top10_first8),NA),
+         top10_last8_lastyear  = ifelse(lag(year) == year - 1, lag(top10_last8),NA),
+         top5_first8_lastyear  = ifelse(lag(year) == year - 1, lag(top5_first8),NA),
+         top5_last8_lastyear   = ifelse(lag(year) == year - 1, lag(top5_last8),NA),
+         team_rank_first8_lastyear = ifelse(lag(year) == year - 1, lag(team_rank_first8),NA),
+         team_rank_last8_lastyear = ifelse(lag(year) == year - 1, lag(team_rank_last8),NA))
+```
+
+```{r}
+yoy_top %>%
+  ungroup() %>%
+  filter(is.na(top40_lastyear) == F) %>%
+  split(.$year) %>% # from base R
+  map_dbl(~pROC::auc(predictor = glm(data = .,
+                                     top40 ~ 
+                                       experience + 
+                                       age + 
+                                       league_rank_lastyear  + 
+                                       top40_lastyear + 
+                                       top20_lastyear +
+                                       top10_lastyear + 
+                                       top5_lastyear +
+                                       league_rank_lastyear +
+                                       top40_first8_lastyear +
+                                       top40_last8_lastyear +
+                                       top20_first8_lastyear +
+                                       top20_last8_lastyear +
+                                       top10_first8_lastyear +
+                                       top10_last8_lastyear +
+                                       top5_first8_lastyear +
+                                       top5_last8_lastyear +
+                                       team_rank_first8_lastyear +
+                                       team_rank_last8_lastyear,
+                                     family = 'binomial')$fitted.values,
+                     response = .$top40))
+```
+
+```{r}
+yoy_top %>%
+  ungroup() %>%
+  filter(is.na(top40_lastyear) == F, year == 2017) %>%
+  glm(data = .,
+      top40 ~ experience + 
+              age + 
+              league_rank_lastyear  + 
+              top40_lastyear + 
+              top20_lastyear +
+              top10_lastyear + 
+              top5_lastyear +
+              league_rank_lastyear +
+              top40_first8_lastyear +
+              top40_last8_lastyear +
+              top20_first8_lastyear +
+              top20_last8_lastyear +
+              top10_first8_lastyear +
+              top10_last8_lastyear +
+              top5_first8_lastyear +
+              top5_last8_lastyear +
+              team_rank_first8_lastyear +
+              team_rank_last8_lastyear,
+      family = 'binomial') %>%
+  summary()
+```
+
+```{r}
+yoy_top %>%
+  ungroup() %>%
+  filter(is.na(top20_lastyear) == F, year == 2017) %>%
+  glm(data = .,
+      top20 ~ experience + 
+              age + 
+              league_rank_lastyear  + 
+              top40_lastyear + 
+              top20_lastyear +
+              top10_lastyear + 
+              top5_lastyear +
+              league_rank_lastyear +
+              top40_first8_lastyear +
+              top40_last8_lastyear +
+              top20_first8_lastyear +
+              top20_last8_lastyear +
+              top10_first8_lastyear +
+              top10_last8_lastyear +
+              top5_first8_lastyear +
+              top5_last8_lastyear +
+              team_rank_first8_lastyear +
+              team_rank_last8_lastyear,
+      family = 'binomial') %>%
+  summary()
+```
+
+```{r}
+yoy_top %>%
+  ungroup() %>%
+  filter(is.na(top40_lastyear) == F, year == 2017) %>%
+  glm(data = .,
+      top10 ~ experience + 
+              age + 
+              league_rank_lastyear  + 
+              top40_lastyear + 
+              top20_lastyear +
+              top10_lastyear + 
+              top5_lastyear +
+              league_rank_lastyear +
+              top40_first8_lastyear +
+              top40_last8_lastyear +
+              top20_first8_lastyear +
+              top20_last8_lastyear +
+              top10_first8_lastyear +
+              top10_last8_lastyear +
+              top5_first8_lastyear +
+              top5_last8_lastyear +
+              team_rank_first8_lastyear +
+              team_rank_last8_lastyear,
+      family = 'binomial') %>%
+  summary()
+```
+
+```{r}
+yoy_top %>%
+  ungroup() %>%
+  filter(is.na(top40_lastyear) == F, year %in% c(2010:2018)) %>%
+  glm(data = .,
+      top5 ~ experience + 
+              age + 
+              league_rank_lastyear  + 
+              top40_lastyear + 
+              top20_lastyear +
+              top10_lastyear + 
+              top5_lastyear +
+              league_rank_lastyear +
+              top40_first8_lastyear +
+              top40_last8_lastyear +
+              top20_first8_lastyear +
+              top20_last8_lastyear +
+              top10_first8_lastyear +
+              top10_last8_lastyear +
+              top5_first8_lastyear +
+              top5_last8_lastyear +
+              team_rank_first8_lastyear +
+              team_rank_last8_lastyear,
+      family = 'binomial') %>%
+  summary()
+```
+
+## move to xgboost in h2o
+
+
+```{r}
+library(h2o)
+library(tidyverse)
+h2o.init(nthreads=-1)
+# load("/home/john/fantasy-football/modeling/model_data.Rda")
+# write_csv(model_data,"/home/john/fantasy-football/modeling/model_data.csv")
+
+
+df <- h2o.importFile(path = "/home/john/fantasy-football/modeling/model_data.csv")
+# dim(df)
+# head(df)
+# tail(df)
+# summary(df,exact_quantiles=TRUE)
+
+response <- "adj_value"
+
+# colnames(df)
+predictors <- colnames(df)[c(3,5:41)]
+
+
+## Split into train, test
+## Going to hold out about ~ 200 datapoints for testing, a little more than one draft's worth
+
+splits <- h2o.splitFrame(
+  data = df, 
+  ratios = c(1176/1376),
+  destination_frames = c("train.hex", "test.hex"), 
+  seed = 1234
+)
+
+train <- splits[[1]]
+test  <- splits[[2]]
+
+# 
+# xgb <- h2o.xgboost(x = predictors, 
+#                y = response, 
+#                training_frame = train,
+#                model_id = "baseline",
+#                nfolds = 5,
+#                keep_cross_validation_predictions = TRUE,
+#                keep_cross_validation_fold_assignment = TRUE,
+#                seed = 2018,
+#                distribution = "gaussian")
+# 
+# 
+# 
+# ## Show a detailed model summary
+# xgb
+# 
+# ## 
+# h2o.varimp_plot(xgb)
+
+
+# baseline rmse = 4.42
+
+
+hyper_params <- list(ntrees = seq(10, 1000, 1),
+                     learn_rate = seq(0.0001, 0.2, 0.0001),
+                     max_depth = seq(1, 20, 1),
+                     sample_rate = seq(0.5, 1.0, 0.0001),
+                     col_sample_rate = seq(0.2, 1.0, 0.0001))
+search_criteria <- list(strategy = "RandomDiscrete",
+                        max_runtime_secs = 3600, 
+                        seed = 1)
+
+# Train the grid
+sink("/home/john/fantasy-football/modeling/xgb-grid-output.txt")
+xgb_grid <- h2o.grid(algorithm = "xgboost",
+                     x = predictors, 
+                     y = response,
+                     training_frame = train,
+                     nfolds = 5,
+                     seed = 1,
+                     hyper_params = hyper_params,
+                     search_criteria = search_criteria)
+
+
+# Sort the grid by CV AUC
+grid <- h2o.getGrid(grid_id = xgb_grid@grid_id, sort_by = "mse", decreasing = FALSE)
+grid_top_model <- grid@summary_table[1, "model_ids"]
+
+print(grid)
+print(grid_top_model)
+
+model_path <- h2o.saveModel(object=grid_top_model, path='/home/john/fantasy-football/modeling/', force=TRUE)
+
+sink()
+
+## Based on grid results we're going to narrow our focus to 
+## Best RMSE from grid is: 7.98
+## Best MAE from grid is: 5.28
+
+hyper_params2 <- list(ntrees = c(300,400,500,600),
+                     learn_rate = c(0.01,0.02,0.03,0.04,0.05),
+                     max_depth = c(4,8,16),
+                     sample_rate = c(0.5,0.6,0.7),
+                     col_sample_rate = c(0.30,0.40,0.50,0.60))
+
+search_criteria2 <- list(strategy = "RandomDiscrete",
+                        max_runtime_secs = 1800, 
+                        seed = 1)
+
+
+xgb_grid2 <- h2o.grid(algorithm = "xgboost",
+                      x = predictors,
+                      y = response,
+                      training_frame = train,
+                      nfolds = 5,
+                      seed = 1,
+                      hyper_params = hyper_params2,
+                      search_criteria = search_criteria2)
+
+
+grid <- h2o.getGrid(grid_id = xgb_grid2@grid_id, sort_by = "mse", decreasing = FALSE)
+
+grid_top_model <- grid@summary_table[1, "model_ids"]
+
+model_path <- h2o.saveModel(object=h2o.getModel(grid_top_model), 
+                            path='/home/john/fantasy-football/modeling/', 
+                            force=TRUE)
+h2o.shutdown()
+
+```
+
+## how about automl?

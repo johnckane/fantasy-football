@@ -1,0 +1,8 @@
+name: Publish Document
+title:
+account: rpubs
+server: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/234323/65d8bf122a5b4ef98ce00ba4df9390d3
+bundleId: https://api.rpubs.com/api/v1/document/234323/65d8bf122a5b4ef98ce00ba4df9390d3
+url: http://rpubs.com/StatsCorner/234323
+when: 1481401442.30086

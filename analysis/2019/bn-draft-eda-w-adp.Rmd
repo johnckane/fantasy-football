@@ -1,0 +1,84 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+load(file = "/home/john/projects/fantasy-football/data/bn-draft-data/draft_data.Rda")
+```
+
+
+```{r}
+glimpse(draft_data)
+```
+
+```{r}
+ordered_draft_data <-
+  draft_data %>% filter(keeper == 0) %>%
+  group_by(year,pos) %>%
+  arrange(desc(adj_value)) %>%
+  mutate(rank = row_number())
+
+
+ggplot(data = ordered_draft_data,
+       aes(x = rank, y = adj_value, group = pos))+
+  geom_point(alpha = 0.1) +
+  geom_smooth() +
+  facet_wrap(~pos, ncol = 2)
+```
+
+
+```{r}
+ggplot(data = ordered_draft_data,
+       aes(x = pick, y = rank, group = pos)) +
+  geom_point() +
+  geom_smooth() +
+  facet_wrap(~pos, ncol = 2)
+```
+
+```{r}
+average_costs <-
+  ordered_draft_data %>%
+  filter(rank <= 20) %>%
+  group_by(pos,rank) %>%
+  summarise(mean_cost = mean(adj_value),
+            sd_cost = sd(adj_value),
+            min_cost = min(adj_value),
+            max_cost = max(adj_value))
+```
+
+```{r}
+average_costs
+```
+
+How well does position ADP correlate with those values?
+
+```{r}
+load("/home/john/projects/fantasy-football/data/adp-data/adp.Rda")
+```
+
+```{r}
+glimpse(adp)
+```
+```{r}
+adp_draft <- 
+  ordered_draft_data %>%
+  inner_join(adp, by = c("year","player_code"))
+```
+
+
+```{r}
+average_costs <-
+  adp_draft %>%
+  filter(rank <= 20) %>%
+  group_by(pos.x,rank) %>%
+  summarise(mean_cost = mean(adj_value),
+            sd_cost = sd(adj_value),
+            min_cost = min(adj_value),
+            max_cost = max(adj_value),
+            mean_pos_adp = mean(pos_adp),
+            min_pos_adp = min(pos_adp),
+            max_pos_adp = max(pos_adp))
+```
+

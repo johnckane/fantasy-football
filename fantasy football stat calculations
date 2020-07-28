@@ -1,0 +1,22 @@
+Playing last place schedule to improve fantasy points
+How does QB continuity affect predictions
+How explainable are "jumps" in the data, e.g. if a WR goes 3,4,6,2,3,13,12, what comes next?
+Total offense as a predictor
+Stats to calculate:
+1) DVOA, points against (D/ST)
+2) YPA, ATPA (QB)
+3) Success ratio (40% of 1st down), (60% 2nd down), (100% 3rd/4th down) (RB)
+4) Catch rate, air yards reception per route (RB/WR)
+5) vs. league average (K)
+
+Split points by receptions/yards...is one more stable YOY?
+
+Look at team rush yards as a % of top two backs and league rank totals
+
+Forecast by P(tier) x historical tier average
+
+Successful play vs. win prob... how to factr in time
+
+
+
+

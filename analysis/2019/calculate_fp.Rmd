@@ -1,0 +1,1123 @@
+---
+title: " R, MySQL and Armchair Analysis"
+output: html_notebook
+---
+
+```{r}
+# install.packages("RMySQL")
+library(RMySQL)
+#help(package = "RMySQL")
+```
+
+```{r}
+# install.packages("tidyverse")
+#update.packages()
+library(tidyverse)
+mydb = dbConnect(MySQL(), user='root', password='cz14F4b12', dbname='armchair_analysis', host='localhost')
+dbListTables(mydb)
+```
+
+
+Need this for matching coaches and defense
+```{r}
+team_name_abbr_lookup <- data.frame(abbr = c('ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN',
+                                             'DET','GB' ,'HOU','IND','JAC','KC' ,'LA' ,'MIA','MIN','NE',
+                                             'NO' ,'NYG','NYJ','OAK','PHI','PIT','SD' ,'SEA','SF' , 'STL',
+                                             'TB','TEN','WAS'),
+                                    name = c('Cardinals','Falcons','Ravens','Bills','Panthers','Bears','Bengals','Browns',
+                                             'Cowboys','Broncos','Lions','Packers','Texans','Colts','Jaguars','Chiefs','Rams',
+                                             'Dolphins','Vikings','Patriots','Saints','Giants','Jets','Raiders','Eagles',
+                                             'Steelers','Chargers','Seahawks','49ers','Rams','Buccaneers','Titans','Redskins'),
+                                    stringsAsFactors = FALSE)
+View(team_name_abbr_lookup)
+```
+
+
+```{r}
+dbGetQuery(con = mydb,
+           "select * from offense where tdret != 0 limit 10")
+```
+
+```{r}
+# we don't get points for return yards
+dbSendQuery(con = mydb,
+           "select 
+              player
+            , gid
+            , game
+            , seas
+            , year
+            , team
+            , py
+            , ints
+            , tdp
+            , ry
+            , rec 
+            , tdrec
+            , fuml
+            from offense") %>%
+           fetch() %>%
+           View()
+
+dbClearResult(dbListResults(mydb)[[1]])
+```
+
+```{r}
+# we don't get points for return yards
+offense <- dbGetQuery(con = mydb,
+           "select 
+              a.player
+            , b.wk as week
+            , a.year
+            , a.team
+            , 0.04*py + -2*ints + 4*tdp + 0.1*ry + 0.1*recy + 6*tdr + 6*tdrec -2*fuml +6*tdret as fp
+            from offense as a
+            join game as b on a.gid = b.gid") 
+head(offense)
+```
+```{r}
+dbGetQuery(con = mydb,
+           "select * from conv limit 10")
+```
+
+
+
+```{r}
+dbGetQuery(con = mydb, "select * from game limit 10")
+two_point <- dbGetQuery(con = mydb,
+                        "select 
+                          a.*
+                        , b.gid
+                        , c.seas as year
+                        , c.wk as week 
+                        from conv as a 
+                        join play as b on a.pid = b.pid
+                        join game as c on b.gid = c.gid where conv = 1")
+head(two_point)
+rush_two_point <- two_point %>%
+  filter(bc != "")
+pass_two_point <- two_point %>%
+  filter(psr != "")
+two_point %>%
+  filter(bc == "", psr == "") # forget this one
+
+
+head(pass_two_point)
+head(offense)
+offense2 <-
+  offense %>%
+  left_join(., 
+            pass_two_point %>% group_by(week,year,psr) %>% summarise(count = n()), 
+            by = c("year","week","player" = "psr")) %>% 
+  mutate(fp = ifelse(is.na(count) == FALSE, fp + 2*count, fp)) %>%
+  select(-count)
+head(offense2)
+offense3 <-
+  offense2 %>%
+  left_join(.,
+            pass_two_point %>% group_by(week,year,trg) %>% summarise(count= n()),
+            by = c("year","week","player" = "trg")) %>%
+  mutate(fp = ifelse(is.na(count) == FALSE, fp+2*count, fp)) %>%
+  select(-count)
+
+offense4 <-
+  offense3 %>%
+  left_join(.,
+            rush_two_point %>% group_by(week,year,bc) %>% summarise(count = n()),
+            by = c("year","week","player" = "bc")) %>%
+  mutate(fp = ifelse(is.na(count) == FALSE, fp+2*count, fp)) %>%
+  select(-count)
+
+```  
+
+
+## Kicking
+```{r}
+dbGetQuery(con = mydb,
+           "select * from fgxp limit 10")
+```
+
+```{r}
+dbGetQuery(con = mydb,
+           "select * from game limit 10")
+dbGetQuery(con = mydb,
+           "select * from play limit 10")
+kicking <- dbGetQuery(con = mydb,
+                      "
+                      select
+                       a.fkicker as player
+                      ,b.seas as year
+                      ,b.wk as week
+                      ,sum(a.pts) as points
+                      from
+                      (select 
+                        a1.pid
+                      , b1.gid
+                      , a1.fkicker
+                      , case when a1.fgxp = 'XP' and a1.good = 1 then 1 
+                             when a1.fgxp = 'FG' and a1.good = 1 and a1.dist <= 39 then 3
+                             when a1.fgxp = 'FG' and a1.good = 1 and a1.dist >= 40 and dist <= 49 then 4
+                             when a1.fgxp = 'FG' and a1.good = 1 and a1.dist >= 50 then 5
+                             when a1.fgxp = 'FG' and a1.good = 0 then -1
+                             else 0
+                        end as pts
+                        from fgxp as a1
+                        join play as b1 on a1.pid = b1.pid) as a
+                     join game as b on a.gid = b.gid
+                     group by 1,2,3
+                      ")
+head(kicking)
+```
+
+
+```{r}
+dbGetQuery(con = mydb,
+           "select * from defense limit 10")
+dbGetQuery(con = mydb,
+           "select * from defense where tdd != tdret")
+defense <- dbGetQuery(con = mydb,
+                      "
+                      select
+                       a.gid
+                      ,a.team
+                      ,a.year
+                      ,sum(a.pts) as fp
+                      from
+                      (select
+                       a1.gid
+                      ,a1.team
+                      ,a1.year
+                      ,a1.sck + 6*a1.tdret + 2*a1.ints + 2*a1.saf +2*a1.blk +2*a1.frcv +6*a1.tdd as pts
+                      from defense as a1) as a
+                      group by 1,2,3")
+head(defense)
+```
+
+```{r}
+dbGetQuery(con = mydb,
+           "select * from game limit 10")
+
+dbGetQuery(con = mydb,
+           "select gid,seas,wk,h,ptsh,v,ptsv from game limit 20")
+# need to change this to seas, wk, gid, team, pa
+all_points <- dbGetQuery(con = mydb,
+                         "select seas, wk, gid, h, ptsv as pa_h, v, ptsh as pa_v
+                         from game")
+head(all_points)
+
+pa <-
+  all_points %>%
+  select(seas,wk,gid,h,pa_h) %>%
+  rename(team = h, pa = pa_h) %>%
+  union(.,all_points %>%
+          select(seas,wk,gid,v,pa_v) %>%
+          rename(team = v, pa = pa_v)
+  ) %>%
+  mutate(pts = ifelse(pa == 0, 5,
+                      ifelse(pa >=1 & pa <=6, 4,
+                             ifelse(pa >= 7 & pa <= 13,3,
+                                    ifelse(pa >= 14 & pa <= 17,1,
+                                           ifelse(pa >= 28 & pa <= 34, -1,
+                                                  ifelse(pa >= 35 & pa <= 45, -3,
+                                                         ifelse(pa >= 46, -5, 0))))))))
+
+pa
+# now yards against
+# I think the way to do it is to look at yards by team, then give this value to their opponent
+
+ty <- dbGetQuery(con = mydb,
+                  "select
+                    gid
+                  , tid
+                  , tname
+                  , ry + py as ty
+                  from team")
+tya <- 
+ty %>%
+  group_by(gid) %>%
+  mutate(tya = ifelse(row_number() == 1, lead(ty), lag(ty))) %>%
+  select(gid,tname,tya) %>%
+  mutate(fpts = ifelse(tya < 100, 5,
+                        ifelse(tya >= 100 & tya <= 199, 3,
+                               ifelse(tya >= 200 & tya <= 299, 2,
+                                      ifelse(tya >= 350 & tya <= 399,-1,
+                                             ifelse(tya >= 400 & tya <= 449, -3,
+                                                    ifelse(tya >= 450 & tya <= 499,-5,
+                                                           ifelse(tya >= 500 & tya <= 549, -6,
+                                                                  ifelse(tya >= 550, -7,0)))))))))
+head(tya)
+
+total_defense <- 
+  defense %>%
+  select(gid,team,fp) %>%
+  inner_join(pa %>% select(gid,team,pts),
+             by = c("gid","team")) %>%
+  inner_join(tya %>% select(-tya),
+             by = c("gid","team" = "tname")) %>%
+  ungroup() %>%
+  mutate(points = fp + pts + fpts) %>%
+  select(-fp,-pts,-fpts)
+head(total_defense)
+```
+
+```{r}
+coach <- dbGetQuery(con = mydb,
+                    "select
+                      gid
+                    , seas
+                    , wk
+                    , h as coach
+                    , case when (ptsh - ptsv) >= 25 then 3
+                           when (ptsh - ptsv) between  20 and  24 then 1
+                           when (ptsh - ptsv) between  15 and  19 then 1
+                           when (ptsh - ptsv) between -19 and -15 then -1
+                           when (ptsh - ptsv) between -24 and -20 then -1
+                           when (ptsh - ptsv) <= -25 then -3 
+                           else 0 end as pts
+                    from game
+                    union
+                    select
+                      gid
+                    , seas
+                    , wk
+                    , v as coach
+                    , case when (ptsv - ptsh) >= 25 then 3
+                           when (ptsv - ptsh) between  20 and  24 then 1
+                           when (ptsv - ptsh) between  15 and  19 then 1
+                           when (ptsv - ptsh) between -19 and -15 then -1
+                           when (ptsv - ptsh) between -24 and -20 then -1
+                           when (ptsv - ptsh) <= -25 then -3 
+                           else 0 end as pts
+                    from game")
+head(coach)
+```
+
+```{r}
+head(offense4)
+head(kicking)
+head(total_defense)
+head(coach)
+```
+
+```{r}
+offense5 <- offense4 %>%
+  select(player,year,week,fp) %>%
+  rename(points = fp)
+head(offense5)
+filter(offense5, player == 'TB-2300')
+head(offense5)
+```
+
+```{r}
+head(kicking)
+```
+
+```{r}
+head(total_defense)
+total_defense2 <- total_defense %>%
+  left_join(.,
+            dbGetQuery(con = mydb,
+                       "select gid, seas as year, wk as week from game"),
+            by = c("gid")) %>%
+  inner_join(.,team_name_abbr_lookup, by = c("team" = "abbr")) %>%
+  mutate(player = paste0(name," D/ST")) %>%
+  select(player,year,week,points)
+head(total_defense2)
+```
+
+```{r}
+head(coach)
+coach2 <-
+  coach %>%
+  rename(year = seas,
+         week = wk,
+         points = pts) %>%
+  inner_join(.,team_name_abbr_lookup, by = c("coach" = "abbr")) %>%
+  mutate(player = paste0(name," HC")) %>%
+  select(player, year, week, points)
+```
+
+```{r}
+points_week_data <- rbind(offense5,
+                          kicking,
+                          total_defense2,
+                          coach2) %>%
+  group_by(player,week,year) %>%
+  summarise(points = sum(points)) %>%
+  ungroup()
+head(points_week_data)
+points_week_data %>%
+  filter(year >= 2009) %>%
+  arrange(desc(points)) %>%
+  slice(1:10)
+#save(points_week_data, file = "/home/john/stats_corner/points_week_data.Rda")
+#load("/home/john/stats_corner/points_week_data.Rda")
+dbGetQuery(con = mydb,
+           "select * from player where player = 'JH-2200'")
+```
+
+
+```{r}
+# For fantasy purposes, only use data from 2010 onward
+points_week_data_2010 <- filter(points_week_data, year >= 2010)
+#save(points_week_data_2010, file = "/home/john/stats_corner/points_week_data_2010.Rda")
+#load("/home/john/stats_corner/points_week_data_2010.Rda")
+```
+
+
+```{r}
+# Actually, we need this split by year so that we can transpose each individually. 
+# Also need a non-game variable for each player to indicate draft or not. 
+# First try to transpose
+# dbGetQuery(con = mydb,
+#            "select * from player where player = 'WW-0200'")
+# one_row <- points_week_data_2010 %>%
+#   filter(year == 2010) %>%
+#   select(-year) %>%
+#   spread(.,
+#          key = week,
+#          value = points,
+#          fill = 0) %>%
+#   spread(.,key = player)
+
+
+one_row <-
+  points_week_data_2010 %>%
+  filter(year == 2010, week <= 16) %>%
+  select(-year) %>%
+  unite(temp, player, week) %>%
+  spread(key = temp, value = points)
+
+head(one_row)
+
+```
+
+```{r}
+players <- dbGetQuery(con = mydb,
+                      "select player, fname, lname,pos1
+                       from player")
+
+head(players)
+```
+
+
+Where is my draft cost data?
+```{r}
+library(readr)
+# install.packages("RCurl")
+library(RCurl)
+library(stringr)
+load("/home/john/stats_corner/points_week_data.Rda")
+head(points_week_data)
+data_url <- getURL("https://raw.githubusercontent.com/johnckane/stats_corner/master/2015/keeper_analysis/draft_data.csv")
+draft_data <- read.csv(text = data_url, stringsAsFactors = FALSE)
+draft_data <- draft_data %>% 
+  mutate(pos = str_trim(pos)) %>%
+  mutate(pos = ifelse(pos == "D/","D/ST",pos))
+
+
+draft_data %>% filter(pos == "D/ST")
+draft_data$team <- toupper(draft_data$team)
+head(draft_data)
+# remove all asterisks
+draft_data$player <- str_replace(draft_data$player, "[*]","")
+
+# Change Le'Veon Bell
+draft_data$player <- ifelse(draft_data$player == "Le Veon Bell", "Le'Veon Bell",draft_data$player)
+
+# Make Steve Smith Steve Smith Sr.
+draft_data$player <- ifelse(draft_data$player == "Steve Smith" & draft_data$team %in% c("BAL","CAR"),
+                        "Steve Smith Sr.",
+                        draft_data$player)
+
+draft_data$player <- ifelse(draft_data$pos == "HC",str_replace(draft_data$player,"HC",""),draft_data$player)
+draft_data$player <- str_trim(draft_data$player)
+ 
+#' Look at all D/ST, see if we need to change those names
+#' 
+draft_data %>% filter(pos == "D/ST")
+
+draft_data$first_name <-  sapply(str_split(draft_data$player,' '), '[[', 1)      
+draft_data$last_name <- sapply(str_split(draft_data$player, ' '), '[[', 2)
+head(draft_data)
+
+draft_data <- draft_data %>%
+  mutate(player = ifelse(pos == "D/ST",
+                         paste(first_name,"D/ST",sep = " "),
+                         player))
+
+
+draft_data$player <- str_trim(draft_data$player)
+  
+draft_data$player <- ifelse(draft_data$player == "Steve Smith" & draft_data$team %in% c("BAL","CAR"),
+                        "Steve Smith Sr.",
+                        draft_data$player)
+
+draft_data_players <- draft_data %>% group_by(player, first_name, last_name) %>% slice(1) %>% select(player, first_name, last_name)
+
+```
+
+
+```{r}
+with(draft_data,table(pos))
+draft_data %>% filter(pos == "HC") %>% group_by(player) %>% summarise(count = n())
+```
+
+
+
+
+```{r}
+head(points_week_data)
+pwd <- points_week_data
+pwd$coach <- grepl("HC",pwd$player)
+pwd$dst <- grepl("D/ST",pwd$player)
+filter(pwd,dst == 1)
+
+players <- dbGetQuery(con = mydb,
+                      "select player, fname, lname, pos1
+                       from player")
+
+
+players %>% filter(lname == "Newton")
+
+dbGetQuery(con = mydb,"select * from player where fname = 'Cam' and lname = 'Newton'")
+
+duplicate_entries <- 
+draft_data_players %>%
+  left_join(.,players, by = c("first_name" = "fname","last_name" = "lname")) %>%
+  group_by(player.x) %>%
+  summarise(count = n()) %>%
+  filter(count > 1)
+
+single_entries <- 
+  draft_data_players %>%
+  anti_join(.,duplicate_entries, by = c("player" = "player.x"))
+
+single_entries_coded <-
+  single_entries %>%
+  left_join(.,players,by = c("first_name" = "fname","last_name" = "lname")) 
+
+  
+```
+
+
+
+```{r}
+head(draft_data)
+
+draft_data_w_code <-
+  draft_data %>%
+  left_join(.,single_entries_coded %>% ungroup() %>% select(player.x,player.y), by = c("player" = "player.x")) %>%
+  rename(player_code = player.y)
+
+library(magrittr)
+draft_data_w_code %<>%
+  mutate(player_code = ifelse(pos %in% c("HC","D/ST"), player,player_code))
+
+uncoded <- 
+  draft_data_w_code %>%
+  filter(is.na(player_code == TRUE))
+
+uncoded %>% arrange(player,year)
+```
+
+```{r}
+dbGetQuery(conn = mydb,
+           statement = "select * from player where lname = 'Miller' and fname = 'Zach'")
+uncoded %<>%
+  mutate(player_code = ifelse(player == 'Adrian Peterson', 'AP-0700',
+                              ifelse(player == 'Alex Smith','AS-1600',
+                                     ifelse(player == 'Antonio Brown','AB-3500',
+                                            ifelse(player == 'Beanie Wells','CW-1400',
+                                                   ifelse(player == 'Brandon Marshall','BM-0300',
+                                                          ifelse(player == 'Cam Newton','CN-0500',
+                                                                 ifelse(player == 'Charles Johnson','CJ-1450',
+                                                                        ifelse(player == 'Chris Givens', 'CG-2060', player_code )) ))))))) %>%
+  mutate(player_code = ifelse(player == "Chris Johnson",'CJ-1700',
+                              ifelse(player == 'David Johnson','DJ-1325',
+                                     ifelse(player == 'Derek Dimke',NA,
+                                            ifelse(player == 'EJ Manuel','EM-0250',
+                                                   ifelse(player == 'James Jones','JJ-4200',
+                                                          ifelse(player == 'Jonathan Stewart','JS-6700',
+                                                                 ifelse(player == 'Kevin Smith','KS-1700',
+                                                                        ifelse(player == 'Marvin Jones','MJ-2250',
+                                                                               ifelse(player == 'Mike Sims-Walker', 'MW-0400', player_code )))))))))) %>%
+  mutate(player_code = ifelse(player == 'Mike Williams' & team == 'SEA','MW-2700',
+                              ifelse(player == 'Mike Williams' & team %in% c('BUF','TB'), 'MW-2800',
+                                     ifelse(player == 'Odell Beckham Jr.','OB-0075',
+                                            ifelse(player == 'Ricky Williams','RW-2600',
+                                                   ifelse(player == 'Royce Adams',NA,
+                                                          ifelse(player == 'Roy Williams','RW-3200',
+                                                                 ifelse(player == 'Ryan Grant','RG-1600',
+                                                                        ifelse(player == 'Steve Smith Sr.','SS-2100',
+                                                                               ifelse(player == 'Steve Smith', 'SS-2200', player_code )))))))))) %>%
+  mutate(player_code = ifelse(player == 'T.Y. Hilton','TH-1850',
+                              ifelse(player == 'Zach Miller','ZM-0200',player_code)))
+                              
+uncoded %>% filter(is.na(player_code) == TRUE)
+
+draft_data_w_code %>% head()
+uncoded %>% head()                              
+
+coded_draft_data <- 
+  bind_rows(draft_data_w_code %>% filter(is.na(player_code) == FALSE),
+            uncoded)
+
+coded_draft_data %>% filter(is.na(player_code) == TRUE)
+# only two players aren't available. this is good.
+```
+
+Merge draft cost with stats. Need an observation with week 30 and 40 for keeper and value data.
+```{r}
+head(points_week_data)
+
+new_rows_df <- data.frame(week = c(30,40))
+player_year <- points_week_data %>% ungroup() %>% group_by(player,year) %>% slice(1)
+
+player_year_new_rows <- full_join(player_year %>% mutate(dummy = 1) %>% select(player,year,dummy),
+                                  new_rows_df %>% mutate(dummy = 1),
+                                  by = c("dummy"))
+
+
+points_week_data_w_cost <-
+  points_week_data %>%
+  full_join(.,coded_draft_data %>% select(player_code, year, value, keeper), by = c("year","player" = "player_code")) %>%
+  bind_rows(.,player_year_new_rows %>%
+              full_join(., coded_draft_data %>% 
+                          select(player_code, year, value, keeper), by = c("year","player" = "player_code"))) %>%
+  mutate(points = ifelse(week == 40,value,
+                         ifelse(week == 30, keeper,points)))
+
+draft_data %>%
+  arrange(player,year) %>%
+  select(player,year,value,keeper) 
+
+
+coded_draft_data2 <- coded_draft_data %>%
+  ungroup() %>%
+  arrange(player_code,year) %>%
+  group_by(player) %>%
+  mutate(player_obs = row_number())
+
+head(coded_draft_data2)
+
+## Easiest way to do this is in a loop I think
+coded_draft_data2$adj_value <- coded_draft_data2$value
+for(i in 1:dim(coded_draft_data2)[1]){
+    if(coded_draft_data2$keeper[i] == 1){
+        if(coded_draft_data2$player_obs[i] != 1){
+            if(coded_draft_data2$year[i] == (coded_draft_data2$year[i-1] + 1)){
+            coded_draft_data2$adj_value[i] <- coded_draft_data2$adj_value[i-1] + 7
+            }
+        }
+    }
+}
+
+# Now remerge with points_week_data_w_cost
+library(magrittr)
+points_week_data_w_cost %<>% 
+  select(-value) %>%
+  left_join(.,
+            coded_draft_data2  %>% select(player_code,year,adj_value), 
+            by = c("player" = "player_code","year"))
+
+filter(points_week_data_w_cost) %>% filter(adj_value > 0) %>% arrange(player,year) %>% View()
+filter(points_week_data_w_cost, player == 'TB-2300')
+
+points_week_data_w_cost2 <- 
+points_week_data_w_cost %>%
+  mutate(points = ifelse(week == 30 & keeper == 1,adj_value,points)) %>%
+  left_join(players %>% select(player, pos1), by = "player") %>% 
+  mutate(position = ifelse(grepl("D/ST",player),"D/ST",
+                           ifelse(grepl("HC",player), "HC",pos1)))
+
+
+
+
+points_week_data_w_cost2 %<>%
+  select(player,year,week,points,position) %>%
+  arrange(player,year,week)
+
+filter(points_week_data_w_cost2, player == 'DP-0350')
+
+# break into year (2010 - 2015) then transpose. 
+head(coded_draft_data2)
+save(coded_draft_data2,file = "/home/john/stats_corner/fantasy_football/coded_draft_data2.Rda")
+load("/home/john/stats_corner/fantasy_football/coded_draft_data2.Rda")
+```
+
+
+
+
+
+
+
+We need to do a few things. Limit each player to 16 weeks only of data. And it must be exactly 16 weeks of data.
+
+That should give us 18 observations per player/season. 
+
+Week 30 is keeper (1 = yes, 2 = no)
+Week 40 is draft_value
+Weeks 1-16 are points scored.
+
+Need to decide if I want to only model drafted players. I think the answer is yes.
+
+
+
+
+```{r}
+colnames(points_week_data_w_cost2)
+drafted <- points_week_data_w_cost2 %>%
+  filter(week == 40, points > 0) %>%
+  select(player,year)
+
+filter(drafted, year == 2015, player == 'DP-0350')
+
+drafted_points_w_week <- 
+  points_week_data_w_cost2 %>%
+  inner_join(drafted, by = c("player","year")) %>%
+  filter(week %in% c(1:16,30,40))
+colnames(drafted_points_w_week)
+1059*18
+with(drafted_points_w_week,table(week))
+
+filter(drafted_points_w_week, year == 2015, player == 'DP-0350')
+
+player_year <- drafted_points_w_week %>% 
+  group_by(player,year,position) %>% 
+  filter(is.na(position) == FALSE) %>%
+  slice(1) %>% 
+  mutate(dummy = 1) %>% 
+  select(player,year,position,dummy)
+
+filter(player_year, year == 2015, player == 'DP-0350')
+
+full_year_week <- data.frame(year = rep(c(2010:2015),each=18), week = rep(c(1:16,30,40),6), dummy = rep(1,108))
+
+head(full_year_week)
+
+player_year_week <- full_year_week %>% inner_join(.,player_year, by = c("year","dummy"))
+
+
+
+filter(player_year_week, year == 2015, player == 'DP-0350')
+
+
+head(player_year_week)
+head(points_week_data_w_cost2)
+
+points_week_data_w_cost3 <-
+  player_year_week %>%
+  select(-dummy) %>%
+  left_join(.,points_week_data_w_cost2 %>% select(-position), by = c("player","year","week")) %>%
+  filter(week %in% c(1:16,30,40)) %>%
+  mutate(points = ifelse(is.na(points),0,points)) %>%
+  ungroup() %>%
+  arrange(year,player,week) %>%
+  #mutate(position = ifelse(is.na(position),lag(position),position)) %>%
+  mutate(week2 = ifelse(week %in% c(1,2,3,4,5,6,7,8,9),paste0("0",week),week))
+
+with(points_week_data_w_cost3,table(week,week2))
+
+filter(points_week_data_w_cost3, year == 2015,player == 'DP-0350')
+```
+```{r}
+player_year_week %>%
+  group_by(position) %>%
+  slice(1)
+```
+
+
+```{r}
+lookup2010 <- points_week_data_w_cost3 %>%
+  ungroup() %>%
+  arrange(year,position,player,week) %>%
+  filter(year == 2010) %>%
+  mutate(obs = row_number()) %>%
+  group_by(player) %>%
+  slice(1) %>%
+  arrange(obs) %>%
+  mutate(year = 2010)
+
+lookup2011 <- points_week_data_w_cost3 %>%
+  arrange(year,position,player,week) %>%
+  filter(year == 2011) %>%
+  mutate(obs = row_number()) %>%
+  group_by(player) %>%
+  slice(1) %>%
+  arrange(obs) %>%
+  mutate(year = 2011)
+
+
+lookup2012 <- points_week_data_w_cost3 %>%
+  arrange(year,position,player,week) %>%
+  filter(year == 2012) %>%
+  mutate(obs = row_number()) %>%
+  group_by(player) %>%
+  slice(1) %>%
+  arrange(obs) %>%
+  mutate(year = 2012)
+
+
+lookup2013 <- points_week_data_w_cost3 %>%
+  arrange(year,position,player,week) %>%
+  filter(year == 2013) %>%
+  mutate(obs = row_number()) %>%
+  group_by(player) %>%
+  slice(1) %>%
+  arrange(obs) %>%
+  mutate(year = 2013)
+
+
+lookup2014 <- points_week_data_w_cost3 %>%
+  arrange(year,position,player,week) %>%
+  filter(year == 2014) %>%
+  mutate(obs = row_number()) %>%
+  group_by(player) %>%
+  slice(1) %>%
+  arrange(obs) %>%
+  mutate(year = 2014)
+
+
+lookup2015 <- points_week_data_w_cost3 %>%
+  arrange(year,position,player,week) %>%
+  filter(year == 2015) %>%
+  mutate(obs = row_number()) %>%
+  group_by(player) %>%
+  slice(1) %>%
+  arrange(obs) %>%
+  mutate(year = 2015)
+
+
+
+save(lookup2010, file = "/home/john/stats_corner/fantasy_football/lookup2010.Rda")
+save(lookup2011, file = "/home/john/stats_corner/fantasy_football/lookup2011.Rda")
+save(lookup2012, file = "/home/john/stats_corner/fantasy_football/lookup2012.Rda")
+save(lookup2013, file = "/home/john/stats_corner/fantasy_football/lookup2013.Rda")
+save(lookup2014, file = "/home/john/stats_corner/fantasy_football/lookup2014.Rda")
+save(lookup2015, file = "/home/john/stats_corner/fantasy_football/lookup2015.Rda")
+```
+
+
+Now to transpose
+```{r}
+names2010 <-points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2010) %>%
+  arrange(position,player,week2) %>%
+  select(-year,-position,-week) %>%
+  unite(temp, player, week2) %>%
+  select(temp) %>%
+  mutate(temp2 = str_replace_all(temp,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(temp2) %>%
+  unlist() %>%
+  unname() 
+
+names2010
+
+
+transpose2010 <- points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2010) %>%
+  arrange(position,player,week) %>%
+  select(-year,-position) %>%
+  unite(temp2, player, week2) %>%
+  mutate(temp2 = str_replace_all(temp2,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(-week) %>%
+  spread(key  = temp2, value = points) 
+
+
+transpose2010 <- transpose2010[,names2010]
+
+transpose2010[,c(721:756)]
+```
+
+Repeat for 2011, 2012, 2013, 2014, 2015
+```{r}
+names2011 <-points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2011) %>%
+  arrange(position,player,week2) %>%
+  select(-year,-position,-week) %>%
+  unite(temp, player, week2) %>%
+  select(temp) %>%
+  mutate(temp2 = str_replace_all(temp,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(temp2) %>%
+  unlist() %>%
+  unname() 
+
+transpose2011 <- points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2011) %>%
+  arrange(position,player,week) %>%
+  select(-year,-position) %>%
+  unite(temp2, player, week2) %>%
+  mutate(temp2 = str_replace_all(temp2,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(-week) %>%
+  spread(key  = temp2, value = points) 
+
+transpose2011 <- transpose2011[,names2011]
+
+```
+
+```{r}
+names2012 <-points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2012) %>%
+  arrange(position,player,week2) %>%
+  select(-year,-position,-week) %>%
+  unite(temp, player, week2) %>%
+  select(temp) %>%
+  mutate(temp2 = str_replace_all(temp,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(temp2) %>%
+  unlist() %>%
+  unname() 
+
+transpose2012 <- points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2012) %>%
+  arrange(position,player,week) %>%
+  select(-year,-position) %>%
+  unite(temp2, player, week2) %>%
+  mutate(temp2 = str_replace_all(temp2,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(-week) %>%
+  spread(key  = temp2, value = points) 
+
+transpose2012 <- transpose2012[,names2012]
+
+```
+
+```{r}
+names2013 <-points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2013) %>%
+  arrange(position,player,week2) %>%
+  select(-year,-position,-week) %>%
+  unite(temp, player, week2) %>%
+  select(temp) %>%
+  mutate(temp2 = str_replace_all(temp,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(temp2) %>%
+  unlist() %>%
+  unname() 
+
+transpose2013 <- points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2013) %>%
+  arrange(position,player,week) %>%
+  select(-year,-position) %>%
+  unite(temp2, player, week2) %>%
+  mutate(temp2 = str_replace_all(temp2,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(-week) %>%
+  spread(key  = temp2, value = points) 
+
+transpose2013 <- transpose2013[,names2013]
+
+```
+
+
+```{r}
+names2014 <-points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2014) %>%
+  arrange(position,player,week2) %>%
+  select(-year,-position,-week) %>%
+  unite(temp, player, week2) %>%
+  select(temp) %>%
+  mutate(temp2 = str_replace_all(temp,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(temp2) %>%
+  unlist() %>%
+  unname() 
+
+transpose2014 <- points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2014) %>%
+  arrange(position,player,week) %>%
+  select(-year,-position) %>%
+  unite(temp2, player, week2) %>%
+  mutate(temp2 = str_replace_all(temp2,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(-week) %>%
+  spread(key  = temp2, value = points) 
+
+transpose2014 <- transpose2014[,names2014]
+
+```
+
+
+```{r}
+names2015 <-points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2015) %>%
+  arrange(position,player,week2) %>%
+  select(-year,-position,-week) %>%
+  unite(temp, player, week2) %>%
+  select(temp) %>%
+  mutate(temp2 = str_replace_all(temp,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(temp2) %>%
+  unlist() %>%
+  unname() 
+
+transpose2015 <- points_week_data_w_cost3 %>%
+  ungroup() %>%
+  filter(year == 2015) %>%
+  arrange(position,player,week) %>%
+  select(-year,-position) %>%
+  unite(temp2, player, week2) %>%
+  mutate(temp2 = str_replace_all(temp2,c("'"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c(" "),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("/"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("-"),"")) %>%
+  mutate(temp2 = str_replace_all(temp2,c("49ers"),"`49ers")) %>%
+  mutate(temp2 = ifelse(str_sub(temp2,1,2) == "`4", paste0(temp2,"`"),temp2)) %>%
+  select(-week) %>%
+  spread(key  = temp2, value = points) 
+
+transpose2015 <- transpose2015[,names2015]
+```
+
+
+
+
+
+
+
+Save Data as .csv
+```{r}
+library(readr)
+?write_csv
+write_csv(transpose2010,
+          path = "/home/john/stats_corner/fantasy_football/transpose2010.csv",
+          col_names = FALSE)
+
+write_csv(transpose2011,
+          path = "/home/john/stats_corner/fantasy_football/transpose2011.csv",
+          col_names = FALSE)
+
+write_csv(transpose2012,
+          path = "/home/john/stats_corner/fantasy_football/transpose2012.csv",
+          col_names = FALSE)
+
+write_csv(transpose2013,
+          path = "/home/john/stats_corner/fantasy_football/transpose2013.csv",
+          col_names = FALSE)
+
+write_csv(transpose2014,
+          path = "/home/john/stats_corner/fantasy_football/transpose2014.csv",
+          col_names = FALSE)
+
+write_csv(transpose2015,
+          path = "/home/john/stats_corner/fantasy_football/transpose2015.csv",
+          col_names = FALSE)
+
+
+
+
+write_csv(lookup2010,
+          path = "/home/john/stats_corner/fantasy_football/lookup2010.csv",
+          col_names = FALSE)
+
+write_csv(lookup2011,
+          path = "/home/john/stats_corner/fantasy_football/lookup2011.csv",
+          col_names = FALSE)
+
+write_csv(lookup2012,
+          path = "/home/john/stats_corner/fantasy_football/lookup2012.csv",
+          col_names = FALSE)
+
+write_csv(lookup2013,
+          path = "/home/john/stats_corner/fantasy_football/lookup2013.csv",
+          col_names = FALSE)
+
+write_csv(lookup2014,
+          path = "/home/john/stats_corner/fantasy_football/lookup2014.csv",
+          col_names = FALSE)
+
+write_csv(lookup2015,
+          path = "/home/john/stats_corner/fantasy_football/lookup2015.csv",
+          col_names = FALSE)
+```
+
+```{r}
+coded_draft_data2 %>%
+  group_by(year,owner) %>%
+  summarise(count = n())
+```
+
+```{r}
+lookup2015 %>%
+  group_by(position) %>%
+  summarise(mino = min(obs),
+            maxo = max(obs))
+
+lookup2015 %>%
+  group_by(position) %>%
+  summarise(count = n())
+
+colnames(lookup2015)
+
+colnames(coded_draft_data2)
+coded_draft_data2 %>%
+  filter(year == 2009) %>%
+  group_by(owner,pos) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  group_by(pos) %>%
+  arrange(desc(count)) %>%
+  slice(1)
+
+
+```

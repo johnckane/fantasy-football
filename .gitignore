@@ -1,0 +1,13 @@
+adp_data.Rda
+*.Rda
+*.csv
+*.html
+.Rproj.user
+data/bn-draft-data/Draft_2011
+data/bn-draft-data/Draft_2012
+data/bn-draft-data/Draft_2013
+data/bn-draft-data/Draft_2014
+data/bn-draft-data/Draft_2015
+data/bn-draft-data/Draft_2016
+data/bn-draft-data/Draft_2017
+data/bn-draft-data/Draft_2018

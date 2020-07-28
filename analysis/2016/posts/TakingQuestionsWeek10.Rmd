@@ -1,0 +1,260 @@
+---
+title: Taking Questions Week 10
+author: John Kane
+date: '2016-19-11'
+slug: 
+categories:
+  - 2016
+  - Taking Questions
+tags: 
+  - 2016
+  - Taking Questions
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+library(googlesheets)
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(knitr)
+library(ggplot2)
+workbook <- gs_url("https://docs.google.com/spreadsheets/d/1c24qtCDF6MnL1I-nNG2ovymFB3fYj1NsWpLe3SGCbJs/pubhtml")
+
+owner <- workbook %>% gs_read(ws = "Owner-Team Name")
+games <- workbook %>% gs_read(ws = "Regular Season Games")
+
+owner_games <- left_join(games,owner,by=c("year","team"))
+
+data <- arrange(owner_games,game_id,points)
+data$W <- rep(0,dim(data)[1])
+data$L <- rep(0,dim(data)[1])
+data$T <- rep(0,dim(data)[1])
+data$PA <- rep(0,dim(data)[1])
+data$result <- rep(" ",dim(data)[1])
+data$last_of_streak <- rep(0,dim(data)[1])
+data$opponent <- rep(" ",dim(data)[1])
+games_played <- data %>% filter(points > 0)
+### Loop to determine winners, and points against
+for(i in seq(from=1,to=dim(games_played)[1],by=2)){
+  
+  games_played$PA[i]   <- games_played$points[i+1]
+  games_played$PA[i+1] <- games_played$points[i]
+  
+  games_played$opponent[i] <- games_played$owner[i+1]
+  games_played$opponent[i+1] <- games_played$owner[i]
+  
+  if(games_played$points[i] < games_played$points[i+1]){
+    games_played$L[i] <- 1
+    games_played$W[i+1] <- 1
+    games_played$result[i] <- "L"
+    games_played$result[i+1] <- "W"
+    
+  }
+  if(games_played$points[i] == games_played$points[i+1]){
+    games_played$T[i] <- 1
+    games_played$T[i+1] <- 1
+    games_played$result[i] <- "T"
+    games_played$result[i+1] <- "T"
+  }
+  
+}
+
+
+games_played <- games_played %>%
+  arrange(year,week,desc(points)) %>%
+  group_by(year,week) %>%
+  mutate(rk = rank(points,ties.method="min"),
+         opp_rk = rank(PA,ties.method="min")) 
+
+# Now to calculate and add up proportional wins
+games_played$pw<- ifelse(games_played$year==2009,(games_played$rk-1)/9,(games_played$rk-1)/11)
+games_played$opp_pw <- ifelse(games_played$year==2009,(games_played$opp_rk-1)/9,(games_played$opp_rk-1)/11)
+
+# summarise every season before 2016
+season_summary <- games_played %>%
+  filter(year != 2016) %>%
+  ungroup() %>%
+  mutate(luck = W - pw) %>%
+  group_by(year,owner) %>%
+  summarise(pw_sum = sum(pw),
+            luck_sum = sum(luck)) %>%
+  ungroup() %>%
+  mutate(pw_rank = dense_rank(-pw_sum),
+         luck_rank_top = dense_rank(-luck_sum),
+         luck_rank_btm = dense_rank(luck_sum))
+```
+
+## Does Hartman Have a Shot at the Proportional Wins (PW) Record?
+
+
+
+```{r,echo=FALSE,include=FALSE}
+ten_weeks <- games_played %>% filter(week <= 10)
+ten_weeks_summary <- ten_weeks %>%
+  ungroup() %>%
+  mutate(luck = W - pw) %>%
+  group_by(year,owner) %>%
+  summarise(pw_sum = sum(pw),
+            luck_sum = sum(luck))
+```
+Let's take a look at the leaderboard of most PW through 10 weeks.
+```{r,echo=FALSE}
+#' The Question: Does Hartman have a shot at the single-season PW record?
+#' The data says...
+ten_weeks_summary %>%
+  ungroup() %>%
+  arrange(-pw_sum) %>%
+  slice(1:10) %>%
+  left_join(.,season_summary %>% select(year,owner,pw_sum,pw_rank), by = c("year","owner")) %>%
+  select(1,2,3,5,6) %>%
+  `colnames<-`(c("Year", "Owner", "PW Through 10 Weeks", "PW Season Total","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+So if you're paying attention you'll see Hartman, currently the 4th best team through 10 weeks, has got a chance to tie 2011 Team Shokunbi for best single season performance. But he's got to score the most points every week for the next three weeks.
+
+## Am I Having One of the Unluckiest Season Ever?
+It feels like I am. Let's see:
+```{r,echo=FALSE}
+ten_weeks_summary %>%
+  ungroup() %>%
+  arrange(luck_sum) %>%
+  slice(1:10) %>%
+  left_join(.,season_summary %>% select(year,owner,luck_sum,luck_rank_btm), by = c("year","owner")) %>%
+  select(1,2,4,5,6) %>%
+  `colnames<-`(c("Year","Owner","Luck Through 10 Weeks","Season Total Luck","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+So I'm the 2nd unluckiest team ever through 10 weeks. I've still got time to get myself off this list. You'll notice luck through 10 weeks isn't necessarily indicative of season ending luck. That means there is still time for some poor bastard to climb this leaderboard on their way to missing the playoffs.
+
+
+## Is Olson Having One of the Luckiest Seasons Ever?
+Again, it sure feels like it. Let's see:
+```{r,echo=FALSE}
+ten_weeks_summary %>%
+  ungroup() %>%
+  arrange(-luck_sum) %>%
+  slice(1:10) %>%
+  left_join(.,season_summary %>% select(year,owner,luck_sum,luck_rank_top), by = c("year","owner")) %>%
+  select(1,2,4,5,6) %>%
+  `colnames<-`(c("Year","Owner","Luck Through 10 Weeks","Season Total Luck","All Time Rank")) %>%
+  kable(digits = 2)
+```
+
+Nope, just the third luckiest. I'll note luck through 10 weeks seems more indicative of season ending luck then the analog in the "unluck" situation. 
+
+## "Can you help settle an arguement between me [Harrington] and the commish and rank each teams WRs (or the top 3-5 WR corps?)
+
+There's only so much time in the day and I wish I could pull everyone's data easily but ESPN insists on making it tough for regular folks to access individual league data. But for the sake of this question I was able to pull down Hartman and Harrington's info. This is data on total points scored by positions starting for each respective team. So if someone scored a lot of points on the bench one week those values are not included here. It's available in the "Roster Summary" tab for each team. Here's Hartman and Harrington, by position. 
+
+```{r, echo = FALSE}
+hartman_harrington <- read.table("/home/john/stats_corner/2016/hartman_harrington.txt",fill = TRUE,row.names=NULL,
+                                 header = FALSE)
+hartman_harrington$owner <- ""
+hartman_harrington$owner[1:23] <- "Hartman"
+hartman_harrington$owner[24:42] <- "Harrington"
+colnames(hartman_harrington) <- c("Position","Points","Owner")
+
+hartman_harrington2 <-
+hartman_harrington %>%
+  group_by(Owner,Position) %>%
+  summarise(total_points = sum(Points))
+
+hartman_harrington2 %>%
+  spread(key = "Owner", value = total_points) %>%
+  mutate(Harrington_vs_Hartman = Harrington - Hartman) %>%
+  `colnames<-`(c("Position","Harrington","Hartman","Harrington vs Hartman")) %>%
+  kable(digits = 1)
+```
+
+So Harrington I suppose you claim the WR crown over Hartman, by about 1.4 points per game. Apart from the less than 1 point/game advantage you have in QBs, Hartman crushes you. Why would you want to bring this up?
+
+## "Is this the largest disparity between good and bad teams that this league has seen? Feels like there's a lot of trash at the bottom of these standings."
+
+Here's my methodology for this one: For each season (omit the 2009 season with 10 teams) compare the average PW of the top 3 teams with the average PW of the bottom three teams.
+
+```{r,echo=FALSE}
+ten_weeks %>%
+  group_by(year,owner) %>%
+  summarise(sum_pw = sum(pw)) %>%
+  ungroup() %>%
+  group_by(year) %>%
+  mutate(pw_rank = min_rank(-sum_pw)) %>%
+  filter(pw_rank %in% c(1,2,3,10,11,12), year != 2009) %>%
+  mutate(top_or_bottom = ifelse(pw_rank %in% c(1,2,3),
+                                "top",
+                                "bottom")) %>%
+  group_by(year,top_or_bottom) %>%
+  summarise(count = n(),
+            avg_pw = mean(sum_pw)) %>%
+  select(year,top_or_bottom,avg_pw) %>%
+  spread(key = "top_or_bottom",value=avg_pw) %>%
+  mutate(diff = top-bottom) %>%
+  select(1,3,2,4) %>%
+  `colnames<-`(c("Year","Top 3 Avg. PW","Bottom 3 Avg. PW","Difference")) %>%
+  kable(digits = 2)
+  
+```
+
+So this year the discrepency is tied with the one from 2011, at about an average of 4 earned victories difference between the groups. The minimum value is nearly 3 wins, so this is definiately above average, but not remarkable. 
+
+FYI: This year the top three are Hartman, Higdon and Regan. The bottom three are McShane, Ready and Harris. In 2011 the top three were Shokunbi, Ready and Harrington. The bottom three that year were Kane, Matovina and Thieneman. 
+
+## "Are my [Hartman's] running backs the top in league history? As soon as zeke gets locked up for domestic violence it's at a minimum tied for the top."
+
+I don't have the time to do this question justice, though it is interesting. Lest Hartman get cocky (never!), remember that Ready used to roll with McCoy and Charles when they were at the top of the league. 
+
+## "Can we add a metric to RJ and Matt mats improvement as a fantasy manager? Are they really better or is it just a fluke?"
+
+Well the season isn't over so they both could still blow it. But let's consider through 10 weeks how they've done in years past compared to this year. We'll use my favorite metric, Proportional Wins. 
+```{r, echo = FALSE}
+mato_rj <- games_played %>% filter(owner %in% c("Thieneman","Matovina"))
+mato_rj_10 <- mato_rj %>% filter(week <= 10)
+
+mato_rj_10_df <- 
+mato_rj_10 %>%
+  group_by(owner,year) %>%
+  summarise(sum_pw = round(sum(pw),2)) %>%
+  spread(key = "owner",value = sum_pw) #%>%
+
+p1 <- ggplot(mato_rj_10_df,aes(x=year,y=Matovina)) + geom_point(colour='red') + geom_line(colour='red') + 
+  geom_point(data=mato_rj_10_df,
+             aes(x=year,y=Thieneman),colour='blue') + 
+  geom_line(data=mato_rj_10_df,
+             aes(x=year,y=Thieneman),colour='blue') +
+  scale_x_continuous("Year",breaks = c(2009,2010,2011,2012,2013,2014,2015,2016)) +
+  annotate("text",x=2010,y=6,label="Matovina",colour='red') +
+  annotate("text",x=2010,y=5.5,label="Thieneman",colour='blue') +
+  ggtitle("PW Through 10 Weeks") +
+  scale_y_continuous("PW")
+
+p1
+```
+
+
+
+So Matovina has been on an upward trajectory ever since bottoming out in 2013. RJ's performance is far more eratic. So I think Matovina is for real and RJ needs to put together a solid campaign next season for us to take him seriously. 
+
+As an aside, some of the Matovina and Thieneman teams in the past have been complete stinkers. Look at the five worst teams (by PW) through 10 weeks in league history:
+
+```{r,echo=FALSE}
+ten_weeks_summary %>% 
+  ungroup() %>%
+  arrange(pw_sum) %>% 
+  select(1,2,3) %>%
+  slice(1:5) %>%
+  `colnames<-`(c("Year","Owner","Total PW")) %>%
+  kable(digits = 2,align = 'llc')
+```
+
+Hey Ken! Welcome again. 
+
+## "Obviously a way more difficult stat to track, but I think an interesting one would be who is the "worst" manager of the league? (i.e. whose bench scores more points than players in play, or something along those lines?)"
+
+This is really tough. We have points scored by starters, but points scored by the bench would be really tough to get out, though possible. Maybe if I get fired from my job I can look at that...
+
+## "Another fun question to answer would be if WAG's have changed the production of managers - do single guys (or guys without babies) do worse than those of us who have long-term-spoken-for counterparts? =)"
+
+Very good question. However since the Live Draft was sabotaged by Himmy this year my relationship/baby status updates would be based on old data, for some people years old data. Better to let sleeping dogs lie. 
+

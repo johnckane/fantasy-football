@@ -200,5 +200,56 @@ cbind(year,max_rns)
 plot(year,max_rns)
 ```
 
+### Max Row Numbers for league rank of 25
+
+```{r}
+max_rns <- numeric()
+year <- numeric()
+for(i in c(2001:2016)){
+
+    tree_data <- wr_model_data %>% 
+      ungroup() %>%
+      filter(year >= 2001, year <= i) %>%
+      select(year,top5,top10,top20,top40,experience,age,top40_lastyear,top20_lastyear,top10_lastyear,top5_lastyear,
+                                         team_rank_lastyear,league_rank_lastyear)
+    
+    tree <- rpart(data = wr_model_data,
+                 method = "class",
+                 formula = top40 ~ experience + age + top40_lastyear + top20_lastyear + top10_lastyear + top5_lastyear +
+                   team_rank_lastyear + league_rank_lastyear,
+                 control = rpart.control(cp = .00001))
+
+    
+    pred_data <- wr_model_data %>%
+                  ungroup() %>%
+                  filter(year == (i+1))
+    
+    
+    pred_data$pred_values <- predict(tree, newdata = pred_data, type = "prob")[,2]
+    
+    
+    max_rn <-
+      pred_data %>%
+      arrange(desc(pred_values)) %>%
+      mutate(rn = row_number()) %>%
+      filter(league_rank <= 25) %>%
+      summarise(max_rn = max(rn)) %>%
+      pull(max_rn)
+
+    max_rns <- c(max_rns,max_rn)
+    year <- c(year,i)
+    
+    rm(tree_data,tree,pred_data,max_rn)
+}
+```
+
+```{r}
+cbind(year,max_rns)
+```
+
+
+```{r}
+plot(year,max_rns)
+```
 
 

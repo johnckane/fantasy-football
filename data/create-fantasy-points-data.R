@@ -1,6 +1,16 @@
 library(RMySQL)
 library(tidyverse)
-mydb = dbConnect(MySQL(), user='root', password='cz14F4b12', dbname='armchair_analysis', host='localhost')
+library(lubridate)
+library(DBI)
+library(pool)
+
+
+pool <- dbPool(drv = RMySQL::MySQL(), 
+               dbname = "armchair_analysis", 
+               host = "localhost", 
+               username = "john", 
+               port = 3306, 
+               unix.sock = "/var/run/mysqld/mysqld.sock")
 team_name_abbr_lookup <- data.frame(abbr = c('ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN',
                                              'DET','GB' ,'HOU','IND','JAC','KC' ,'LA' ,'MIA','MIN','NE',
                                              'NO' ,'NYG','NYJ','OAK','PHI','PIT','SD' ,'SEA','SF' , 'STL',
@@ -11,18 +21,26 @@ team_name_abbr_lookup <- data.frame(abbr = c('ARI','ATL','BAL','BUF','CAR','CHI'
                                              'Steelers','Chargers','Seahawks','49ers','Rams','Buccaneers','Titans','Redskins'),
                                     stringsAsFactors = FALSE)
 
-offense <- dbGetQuery(con = mydb,
-                      "select 
-              a.player
-            , b.wk as week
-            , a.year
-            , a.team
-            , 0.04*py + -2*ints + 4*tdp + 0.1*ry + 0.1*recy + 6*tdr + 6*tdrec -2*fuml +6*tdret as fp
-            from offense as a
-            join game as b on a.gid = b.gid") 
+offense <- dbGetQuery(con = pool,
+                      "SELECT 
+                      a.player
+                      , b.wk as week
+                      , a.year
+                      , a.team
+                      , 0.04*py + -2*ints + 4*tdp + 0.1*ry + 0.1*recy + 6*tdr + 6*tdrec -2*fuml +6*tdret as fp
+                      ,py
+                      ,ints
+                      ,tdp
+                      ,ry
+                      ,recy
+                      ,tdr
+                      ,tdrec
+                      ,fuml
+                      ,tdret
+                      FROM offense as a
+                      JOIN game as b on a.gid = b.gid") 
 
-
-two_point <- dbGetQuery(con = mydb,
+two_point <- dbGetQuery(con = pool,
                         "select 
                         a.*
                         , b.gid
@@ -69,7 +87,7 @@ offense5 <- offense4 %>%
   select(player,year,week,fp) %>%
   rename(points = fp)
 ## Kicking
-kicking <- dbGetQuery(con = mydb,
+kicking <- dbGetQuery(con = pool,
                       "
                       select
                        a.fkicker as player
@@ -95,7 +113,7 @@ kicking <- dbGetQuery(con = mydb,
                       ")
 ## Defense
 
-defense <- dbGetQuery(con = mydb,
+defense <- dbGetQuery(con = pool,
                       "
                       select
                        a.gid
@@ -111,17 +129,18 @@ defense <- dbGetQuery(con = mydb,
                       from defense as a1) as a
                       group by 1,2,3")
 
-all_points <- dbGetQuery(con = mydb,
+all_points <- dbGetQuery(con = pool,
                          "select seas, wk, gid, h, ptsv as pa_h, v, ptsh as pa_v
                          from game")
 pa <-
   all_points %>%
   select(seas,wk,gid,h,pa_h) %>%
   rename(team = h, pa = pa_h) %>%
-  union(.,all_points %>%
+  dplyr::union(.,all_points %>%
           select(seas,wk,gid,v,pa_v) %>%
           rename(team = v, pa = pa_v)
   ) %>%
+  as.data.frame() %>%
   mutate(pts = ifelse(pa == 0, 5,
                       ifelse(pa >=1 & pa <=6, 4,
                              ifelse(pa >= 7 & pa <= 13,3,
@@ -130,7 +149,7 @@ pa <-
                                                   ifelse(pa >= 35 & pa <= 45, -3,
                                                          ifelse(pa >= 46, -5, 0))))))))
 
-ty <- dbGetQuery(con = mydb,
+ty <- dbGetQuery(con = pool,
                  "select
                     gid
                   , tid
@@ -163,7 +182,7 @@ total_defense <-
 
 total_defense2 <- total_defense %>%
   left_join(.,
-            dbGetQuery(con = mydb,
+            dbGetQuery(con = pool,
                        "select gid, seas as year, wk as week from game"),
             by = c("gid")) %>%
   inner_join(.,team_name_abbr_lookup, by = c("team" = "abbr")) %>%
@@ -172,7 +191,7 @@ total_defense2 <- total_defense %>%
 
 ## Coach
 
-coach <- dbGetQuery(con = mydb,
+coach <- dbGetQuery(con = pool,
                     "select
                       gid
                     , seas
@@ -220,4 +239,4 @@ points_week_data <- rbind(offense5,
   summarise(points = sum(points)) %>%
   ungroup()
 
-save(points_week_data, file = "/home/john/fantasy-football/points_week_data.Rda")
+save(points_week_data, file = "/home/john/projects/fantasy-football/data/points_week_data.Rda")

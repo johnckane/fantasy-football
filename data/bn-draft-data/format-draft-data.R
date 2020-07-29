@@ -23,10 +23,9 @@ for(i in 1:10){
   
 }
 
-draft_data <- do.call(what = rbind, data_list)
+# Treat 2009 to 2018 differently
+draft_data <- do.call(what = rbind, data_list[1:9])
 9*192
-str(draft_data)
-
 
 #' Time to Parse
 #' We'll get these columns:
@@ -56,6 +55,73 @@ draft_data <- draft_data %>%
 draft_data %<>% arrange(player,year)
 
 draft_data$team <- toupper(draft_data$team)
+
+
+
+## Draft 2019
+#' year, owner, pick, player, team, position, value, keeper
+draft2019 <- data_list[[10]]
+draft2019$pick <- as.numeric(sapply(str_split(draft2019$X1,' '),'[[',1))
+draft2019$player_team <- 
+  str_remove(
+    str_extract(
+        draft2019$X1,
+        '[A-Z].*,'
+    ),
+    ',')
+draft2019$team <- 
+  str_extract(
+    draft2019$player_team,
+    '\\D{2,3}$'
+  )
+
+draft2019$player <-
+  sapply(
+    str_split(draft2019$player_team, 
+              ' \\D{2,3}$'),
+    '[[',
+  1)
+
+draft2019$position_value_keeper <-
+  sapply(
+    str_split(draft2019$X1,','),
+    '[[',
+    2
+  )
+
+draft2019$position <- 
+  str_extract(draft2019$position_value_keeper,'^ [A-Z//]+ ') %>%
+  str_remove_all(.," ")
+with(draft2019,table(position))
+draft2019$value <- 
+  str_remove(
+    str_extract(draft2019$position_value_keeper,'\\$\\d{1,3}'),
+    '\\$'
+  ) %>%
+  as.numeric()
+
+
+draft2019$keeper <- 
+  ifelse(
+    grepl(
+      pattern ='^ [A-Z//]+ K',
+      x = draft2019$position_value_keeper),
+  1,
+  0)
+
+with(draft2019,table(keeper))  
+
+draft2019$team <- toupper(draft2019$team)
+
+draft2019 <-
+  draft2019 %>%
+  select(year,owner,pick,player,team,position,value,keeper)
+
+draft_data <- bind_rows(draft_data,draft2019)
+
+######################################################
+ # start here
+#######################################################
 
 # Fix keeper values...
 # remove all asterisks
@@ -118,7 +184,7 @@ draft_data %>% filter(value2 != adj_value)
 ## Combine with Armchair Analysis Code 
 
 #' Need:
-#' 1) Unique players in the draft data
+#' ) Unique players in the draft data
 #' 2) Their player_key
 
 draft_data_players <- draft_data %>% group_by(player, first_name, last_name) %>% slice(1) %>% select(player, first_name, last_name)

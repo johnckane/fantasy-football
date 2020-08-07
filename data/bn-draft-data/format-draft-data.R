@@ -119,10 +119,6 @@ draft2019 <-
 
 draft_data <- bind_rows(draft_data,draft2019)
 
-######################################################
- # start here
-#######################################################
-
 # Fix keeper values...
 # remove all asterisks
 draft_data$player <- str_replace(draft_data$player, "[*]","")
@@ -392,10 +388,10 @@ colnames(coded_draft_data)
 
 coded_draft_data %>% filter(is.na(player_code) == TRUE)
 
-
+colnames(coded_draft_data)
 draft_data <- coded_draft_data[,c(1,2,3,4,13,5,6,8,12)]
 head(draft_data)
-
+colnames(draft_data)
 draft_data %>% ungroup() %>% group_by(player,year) %>% summarise(count = n()) %>% filter(count > 1)
 
 save(draft_data, file = "/home/john/projects/fantasy-football/data/bn-draft-data/draft_data.Rda")

@@ -2,12 +2,10 @@ library(shiny)
 library(dplyr)
 library(lpSolve)
 
-
-
-load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/qb_single_obs_per_cluster.Rda")
-load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/rb_single_obs_per_cluster.Rda")
-load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/wr_single_obs_per_cluster.Rda")
-load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/te_single_obs_per_cluster.Rda")
+load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/qb_single_obs_per_cluster_last5.Rda")
+load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/rb_single_obs_per_cluster_last5.Rda")
+load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/wr_single_obs_per_cluster_last5.Rda")
+load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/te_single_obs_per_cluster_last5.Rda")
 
 df <- bind_rows(qb_single_obs_per_cluster %>% mutate(position = 'QB',
                                                      avg_cost = round(avg_cost),
@@ -42,6 +40,7 @@ shinyServer(
                                 input$qb_cluster3,
                                 input$qb_cluster4,
                                 input$qb_cluster5,
+                                input$qb_cluster6,
                                 input$rb_cluster1,
                                 input$rb_cluster2,
                                 input$rb_cluster3,
@@ -62,6 +61,8 @@ shinyServer(
                                 input$wr_cluster8,
                                 input$wr_cluster9,
                                 input$wr_cluster10, 
+                                input$wr_cluster11,
+                                input$wr_cluster12,
                                 input$te_cluster1,
                                 input$te_cluster2,
                                 input$te_cluster3,

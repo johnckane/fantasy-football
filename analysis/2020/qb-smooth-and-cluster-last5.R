@@ -221,15 +221,16 @@ cluster_data3 %>%
 View(cluster_data3)
 
 
-## Go with 7
+
+## Go with 6
 cluster_data <- data
 cluster_object <- kmeans(data[,c(4,5)],
-                         centers = 7,
+                         centers = 6,
                          nstart = 20)
-
 cluster_data$cluster <- cluster_object$cluster
 var_explained <- cluster_object$betweenss/cluster_object$totss
 var_explained
+
 cluster_data2 <-
   cluster_data %>%
   group_by(cluster) %>%
@@ -254,6 +255,23 @@ cluster_data3 %>%
             len = n()) %>%
   mutate(full_set = ifelse(max_adp-min_adp +1 == len,T,F))
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # create a dataset like
 # |player|ppg|cost|
 # with one obs per cluster
@@ -264,6 +282,8 @@ cluster_data3 %>%
   group_by(new_cluster) %>%
   mutate(player = paste0("QB-",new_cluster,"-",row_number()))
 
+
+head(qb_cluster_data)
 
 save(qb_cluster_data,
      file = "/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/qb_cluster_data_last5.Rda")

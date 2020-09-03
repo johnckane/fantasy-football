@@ -2,11 +2,13 @@ library(tidyverse)
 library(rvest)
 library(RMySQL)
 library(magrittr)
+library(pool)
 load("/home/john/projects/fantasy-football/data/team_df.Rda")
+#link: https://fantasyfootballcalculator.com/adp?format=standard&year=&teams=12&view=graph&pos=all
 url_base <- "https://fantasyfootballcalculator.com/adp?format=standard&year="
 url_coda <- "&teams=12&view=graph&pos=all"
 year <- 2020
-dim <- 230
+dim <- 221
 
 for(j in 1:1){
   
@@ -29,8 +31,6 @@ for(j in 1:1){
 }
 
 adp
-library(pool)
-
 pool <- dbPool(drv = RMySQL::MySQL(), 
                dbname = "armchair_analysis", 
                host = "localhost", 
@@ -138,12 +138,20 @@ uncoded_w_code <-
 filter(uncoded_w_code,is.na(player_code)) %>% arrange(player)                                                                                 
 
 
+
 adp_final <- bind_rows(adp_w_code %>% filter(is.na(player_code) == FALSE),uncoded_w_code)
 
 adp_final %<>% 
   left_join(.,team_df %>% select(abbr,team_name), by = c("team" = "abbr")) %>%
   mutate(player_code =ifelse(pos == 'D/ST',paste0(team_name," ","D/ST"),player_code)) %>%
   select(-team_name)
+
+
+## Need to fix differentiating team names here, for examples JAX and JAC
+adp_final <-
+  adp_final %>%
+  mutate(team = ifelse(team == 'JAX','JAC',team))
+
 
 adp_2020 <-
   adp_final %>%
@@ -157,16 +165,8 @@ adp_2020 %>% distinct() %>% dim()
 any(is.na(adp_2020))
 which(is.na(adp_2020))
 
-lapply(X = adp_2020,FUN = is.na)
-
-## Need to fix differentiating team names here, for examples JAX and JAC
-
-adp_2020[49,]
-
-head(adp_2019)
-
-adp_2019_ranked <- 
-  adp_2019 %>%
+adp_2020_ranked <- 
+  adp_2020 %>%
   arrange(overall) %>%
   mutate(overall = row_number()) %>%
   group_by(pos) %>%
@@ -176,41 +176,38 @@ adp_2019_ranked <-
 
 head(players)
 
-adp_2019_ranked_w_age <-
-  adp_2019_ranked %>%
+adp_2020_ranked_w_age <-
+  adp_2020_ranked %>%
   left_join(players, by = "player_code") %>%
-  mutate(age = 2019 - year(as_date(dob)))
+  mutate(age = 2020 - lubridate::year(as_date(dob)))
 
 # Also get BYE weeks
 bye_weeks <-
-  data.frame(team = c('NYJ','SF',
-                      'DET','MIA',
-                      'BUF','CHI','IND','OAK',
-                      'CAR','CLE','PIT','TB',
-                      'BAL','DAL',
-                      'ATL','CIN','LAR','NO',
-                      'DEN','HOU','JAX','NE','PHI','WAS',
-                      'GB','NYG','SEA','TEN',
-                      'ARI','KC','LAC','MIN'),
-             bye = c(4,4,
-                     5,5,
+  data.frame(team = c('DET','GB',
+                      'LV','NE','NO','SEA',
+                      'IND','JAC','MIN','TEN',
+                      'ARI','BAL','DEN','HOU','PIT','WAS',
+                      'CIN','CLE','LAR','PHI',
+                      'ATL','DAL','KC','LAC',
+                      'BUF','CHI','MIA','NYG','NYJ','SF',
+                      'CAR','TB'),
+             bye = c(5,5,
                      6,6,6,6,
                      7,7,7,7,
-                     8,8,
+                     8,8,8,8,8,8,
                      9,9,9,9,
-                     10,10,10,10,10,10,
-                     11,11,11,11,
-                     12,12,12,12),
+                     10,10,10,10,
+                     11,11,11,11,11,11,
+                     13,13),
              stringsAsFactors = F)
 
-adp_2019_ranked_w_age_bye <-
-  adp_2019_ranked_w_age %>%
+adp_2020_ranked_w_age_bye <-
+  adp_2020_ranked_w_age %>%
   left_join(bye_weeks, by = 'team')
 
-any(is.na(adp_2019_ranked_w_age_bye$bye))
-#which(is.na(adp_2019_ranked_w_age_bye$bye))
-#adp_2019_ranked_w_age_bye$team[c(23,83,121)]
+any(is.na(adp_2020_ranked_w_age_bye$bye))
 
 
-save(adp_2019_ranked_w_age_bye, file = "/home/john/projects/fantasy-football/data/adp-data/adp_2019_ranjed_w_age_bye.Rda")
+
+save(adp_2020_ranked_w_age_bye, file = "/home/john/projects/fantasy-football/data/adp-data/adp_2020_ranked_w_age_bye.Rda")
 

@@ -1,10 +1,70 @@
-load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/qb_cluster_data_last5.Rda")
-load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/rb_cluster_data_last5.Rda")
-load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/wr_cluster_data_last5.Rda")
-load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/te_cluster_data_last5.Rda")
-#load adp
-load("/home/john/projects/fantasy-football/data/adp-data/adp_2020_ranked_w_age_bye.Rda")
-# load draft data
+# load libraries
+library(tidyverse)
+library(lpSolve)
+
+# load the four datasets
+load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/qb_cluster_data.Rda")
+load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/rb_cluster_data.Rda")
+load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/wr_cluster_data.Rda")
+load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/te_cluster_data.Rda")
+
+# bind them together
+clustered_data <- bind_rows(qb_cluster_data %>% mutate(position = 'QB'),
+                            rb_cluster_data %>% mutate(position = 'RB'),
+                            wr_cluster_data %>% mutate(position = 'WR'),
+                            te_cluster_data %>% mutate(position = 'TE'))
+
+clustered_data
+wr_cluster_data %>% View()
+## Set up the objective function ##
+objective <- clustered_data$avg_ppg
+
+
+## Lay out the constraints ##
+# Total salary row
+c_salary <- clustered_data$avg_cost
+# 2 QBs
+c_qb <- ifelse(clustered_data$position=='QB',1,0)
+# 2 RBs 
+c_rb <- ifelse(clustered_data$position=='RB',1,0)
+# 1 TE 
+c_te <- ifelse(clustered_data$position=='TE',1,0)
+# 3 WRs 
+c_wr <- ifelse(clustered_data$position=='WR',1,0)
+
+direction <- c('<','==','==','==','==')
+
+
+rhs <- c(292,2,2,1,3)
+constraints <- matrix(rbind(c_salary,
+                            c_qb,
+                            c_rb,
+                            c_te,
+                            c_wr),
+                      nrow = 5)
+
+
+solved <-
+lp(direction = "max",
+   objective.in = objective,
+   const.mat = constraints,
+   const.dir = direction,
+   const.rhs = rhs,
+   all.bin = TRUE,
+   num.bin.solns = 1)
+
+solved$solution 
+clustered_data$in_solution = solved$solution
+
+clustered_data %>% filter(in_solution == 1) 
+clustered_data %>% 
+  filter(in_solution == 1) %>% 
+  ungroup() %>% 
+  summarise(total_ppg = sum(avg_ppg),
+            total_cost = sum(avg_cost))
+
+
+## Account for keepers somehow...
 
 keeper_data <- data.frame(new_cluster = numeric(),
                           avg_cost = numeric(),
@@ -14,61 +74,11 @@ keeper_data <- data.frame(new_cluster = numeric(),
                           stringsAsFactors = F)
 
 
-# Josh Allen: 20
-# Fournette: 43
-# Montgomery: 28
-# Thomas: 98
-# Woods: 43
-# DJ Moore: 26
-# Kelce: 52
-# Goff: 26
-# Ronald Jones II: 7
-# Beckham: 42
-
-keeper_clusters <- rep(0,12)
-keeper_player <- 
-  c('Allen',
-    'Fournette',
-    'Montgomery',
-    'Thomas',
-    'Woods',
-    'Moore',
-    'Kelce',
-    'Goff',
-    'Jones',
-    'Beckham',
-    'Godwin',
-    'Golladay')
-keeper_position <- c('QB','RB','RB','WR','WR','WR','TE','QB','RB','WR','WR','WR')
-keeper_avg_cost <- c(20,43,28,98,43,26,52,26,7,42,39,45)
-
-keeper_avg_ppg <- c(17.4,
-                    8.9,
-                    8.9,
-                    12.0,
-                    8.5,
-                    9.2,
-                    9.7,
-                    16,
-                    8.9,
-                    9.7,
-                    10.8,
-                    10.8)
-
-
-
-
-adp_2020_ranked_w_age_bye %>%
-  filter(last_name == 'Jones') %>%
-  select(player, pos_adp) %>%
-  arrange(pos_adp) %>%
-  print(n = 27)
-
-rb_cluster_data %>%
-  arrange(desc(avg_ppg)) %>%
-  ungroup() %>%
-  filter(row_number() == 28)
-
+keeper_clusters <- rep(0,10)
+keeper_avg_cost <- c(19,20,51,105,7,45,26,9,15,24)
+keeper_avg_ppg <- c(16.1,13.7,11.5,13.8,8.4,9.9,7.7,7.2,8.4,6.3)
+keeper_player <- c('Goff','Darnold','Cook','Johnson','Williams','Kelce','Drake','Barber','Kupp','Sanders')
+keeper_position <- c('QB','QB','RB','RB','WR','TE','RB','RB','WR','WR')
 
 keeper_data <- data.frame(new_cluster = keeper_clusters,
                           avg_cost = keeper_avg_cost,
@@ -77,10 +87,16 @@ keeper_data <- data.frame(new_cluster = keeper_clusters,
                           position = keeper_position,
                           stringsAsFactors = F)
 
-clustered_data <- bind_rows(qb_cluster_data %>% mutate(position = 'QB'),
-                            rb_cluster_data %>% mutate(position = 'RB'),
-                            wr_cluster_data %>% mutate(position = 'WR'),
-                            te_cluster_data %>% mutate(position = 'TE'))
+# Jared Goff: 12
+# Sam Darnold: 25
+# Dalvin Cook: 10
+# David Johnson: 5
+# Mike Williams: 24
+# Travis Kelce: 1
+# Kenyan Drake: 26
+# Peyton Barber: 46
+# Cooper Kupp: 23
+# Emmanuel Sanders: 47
 
 clustered_w_keeper <- bind_rows(keeper_data,clustered_data)
 clustered_w_keeper$in_solution <- NULL
@@ -101,7 +117,7 @@ c_te <- ifelse(clustered_w_keeper$position=='TE',1,0)
 # 3 WRs 
 c_wr <- ifelse(clustered_w_keeper$position=='WR',1,0)
 # 2 keepers
-c_keeper <- c(rep(1,12),rep(0,165))
+c_keeper <- c(rep(1,10),rep(0,164))
 
 direction <- c('<=','==','==','==','==','<=')
 
@@ -137,8 +153,8 @@ clustered_w_keeper %>%
             total_cost = sum(avg_cost))
 
 
-  results <- list()
-s## 
+results <- list()
+## 
 for(d in c(150:292)){
   print(d)
   clustered_w_keeper$in_solution <- NULL
@@ -161,7 +177,7 @@ for(d in c(150:292)){
   
 }
 
-table(unlist(results))
+unlist(results)
 
 results_df <- as.data.frame(do.call(rbind,results))
 results_df$budget <- c(150:292)
@@ -191,32 +207,53 @@ p <-
 p
 
 
-## No TEs
+## Keep Kelce?
+
+clustered_w_keeper$in_solution <- NULL
+rhs <- c(247,2,2,0,3,1)
+
+solved <-
+  lp(direction = "max",
+     objective.in = objective,
+     const.mat = constraints,
+     const.dir = direction,
+     const.rhs = rhs,
+     all.bin = TRUE,
+     num.bin.solns = 1)
+
+clustered_w_keeper$in_solution = solved$solution
+
+clustered_w_keeper %>% filter(in_solution == 1) 
 
 
-
-## what if RBs 1,2,3 are gone?
-no_rb_clustered_w_keeper <-
+## what if TEs 1 and 2 are gone?
+no_te_clustered_w_keeper <-
   clustered_w_keeper %>%
-  filter(!(player %in% c('RB-1-1','RB-1-2','RB-1-3')))
+  filter(!(player %in% c('TE-1-1','TE-1-2')))
 
-no_rb_clustered_w_keeper$in_solution <- NULL
+no_te_clustered_w_keeper$in_solution <- NULL
 
-head(no_rb_clustered_w_keeper)
+head(no_te_clustered_w_keeper)
 
-objective <- no_rb_clustered_w_keeper$avg_ppg
+objective <- no_te_clustered_w_keeper$avg_ppg
+
+
+
+
+
+
 
 ## Lay out the constraints ##
 # Total salary row
-c_salary <- no_rb_clustered_w_keeper$avg_cost
+c_salary <- no_te_clustered_w_keeper$avg_cost
 # 2 QBs
-c_qb <- ifelse(no_rb_clustered_w_keeper$position=='QB',1,0)
+c_qb <- ifelse(no_te_clustered_w_keeper$position=='QB',1,0)
 # 2 RBs 
-c_rb <- ifelse(no_rb_clustered_w_keeper$position=='RB',1,0)
+c_rb <- ifelse(no_te_clustered_w_keeper$position=='RB',1,0)
 # 1 TE 
-c_te <- ifelse(no_rb_clustered_w_keeper$position=='TE',1,0)
+c_te <- ifelse(no_te_clustered_w_keeper$position=='TE',1,0)
 # 3 WRs 
-c_wr <- ifelse(no_rb_clustered_w_keeper$position=='WR',1,0)
+c_wr <- ifelse(no_te_clustered_w_keeper$position=='WR',1,0)
 # 2 keepers
 c_keeper <- c(rep(1,10),rep(0,162))
 
@@ -243,93 +280,38 @@ solved <-
      num.bin.solns = 1)
 
 solved$solution 
-length(solved$solution)
-dim(no_rb_clustered_w_keeper)
-no_rb_clustered_w_keeper$in_solution = solved$solution
 
-no_rb_clustered_w_keeper %>% filter(in_solution == 1) 
-
-## what if top TEs are gone?
-no_te_clustered_w_keeper <-
-  clustered_w_keeper %>%
-  filter(!(player %in% c('TE-1-2','TE-1-1')))
-
-no_te_clustered_w_keeper$in_solution <- NULL
-
-head(no_te_clustered_w_keeper)
-
-objective <- no_te_clustered_w_keeper$avg_ppg
-
-## Lay out the constraints ##
-# Total salary row
-c_salary <- no_te_clustered_w_keeper$avg_cost
-# 2 QBs
-c_qb <- ifelse(no_te_clustered_w_keeper$position=='QB',1,0)
-# 2 RBs 
-c_rb <- ifelse(no_te_clustered_w_keeper$position=='RB',1,0)
-# 1 TE 
-c_te <- ifelse(no_te_clustered_w_keeper$position=='TE',1,0)
-# 3 WRs 
-c_wr <- ifelse(no_te_clustered_w_keeper$position=='WR',1,0)
-# 2 keepers
-c_keeper <- c(rep(1,10),rep(0,163))
-
-direction <- c('<=','==','==','==','==','<=')
-
-
-rhs <- c(290,2,2,1,3,2)
-constraints <- matrix(rbind(c_salary,
-                            c_qb,
-                            c_rb,
-                            c_te,
-                            c_wr,
-                            c_keeper),
-                      nrow = 6)
-
-
-solved <-
-  lp(direction = "max",
-     objective.in = objective,
-     const.mat = constraints,
-     const.dir = direction,
-     const.rhs = rhs,
-     all.bin = TRUE,
-     num.bin.solns = 1)
-
-solved$solution 
-length(solved$solution)
-dim(no_te_clustered_w_keeper)
 no_te_clustered_w_keeper$in_solution = solved$solution
 
-no_te_clustered_w_keeper %>% filter(in_solution == 1)
+no_te_clustered_w_keeper %>% filter(in_solution == 1) 
 
 
 
-## what if all top 10 RBs are gone
-no_rb_clustered_w_keeper <-
+## what if no cluster 1 RBs are there?
+no_top_rb <-
   clustered_w_keeper %>%
-  filter(!(player %in% c('RB-1-1','RB-1-2','RB-1-3','RB-2-1','RB-2-2','RB-2-3',
-                         'RB-3-1','RB-3-2','RB-3-3','RB-3-4')))
+  filter(!(player %in% c('RB-1-1','RB-1-2','RB-1-3')))
 
-no_rb_clustered_w_keeper$in_solution <- NULL
+no_top_rb$in_solution <- NULL
 
-head(no_rb_clustered_w_keeper)
+head(no_top_rb)
 
-objective <- no_rb_clustered_w_keeper$avg_ppg
+objective <- no_top_rb$avg_ppg
+
 
 ## Lay out the constraints ##
 # Total salary row
-c_salary <- no_rb_clustered_w_keeper$avg_cost
+c_salary <- no_top_rb$avg_cost
 # 2 QBs
-c_qb <- ifelse(no_rb_clustered_w_keeper$position=='QB',1,0)
+c_qb <- ifelse(no_top_rb$position=='QB',1,0)
 # 2 RBs 
-c_rb <- ifelse(no_rb_clustered_w_keeper$position=='RB',1,0)
+c_rb <- ifelse(no_top_rb$position=='RB',1,0)
 # 1 TE 
-c_te <- ifelse(no_rb_clustered_w_keeper$position=='TE',1,0)
+c_te <- ifelse(no_top_rb$position=='TE',1,0)
 # 3 WRs 
-c_wr <- ifelse(no_rb_clustered_w_keeper$position=='WR',1,0)
+c_wr <- ifelse(no_top_rb$position=='WR',1,0)
 # 2 keepers
-c_keeper <- c(rep(1,10),rep(0,155))
+c_keeper <- c(rep(1,10),rep(0,165))
 
 direction <- c('<=','==','==','==','==','<=')
 
@@ -354,11 +336,7 @@ solved <-
      num.bin.solns = 1)
 
 solved$solution 
-length(solved$solution)
-dim(no_rb_clustered_w_keeper)
-no_rb_clustered_w_keeper$in_solution = solved$solution
 
-no_rb_clustered_w_keeper %>% filter(in_solution == 1) 
+no_top_rb$in_solution = solved$solution
 
-
-
+no_top_rb %>% filter(in_solution == 1) 

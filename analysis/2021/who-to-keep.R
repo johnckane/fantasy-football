@@ -3,9 +3,9 @@ load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clu
 load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/wr_cluster_data_last5.Rda")
 load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clustered/te_cluster_data_last5.Rda")
 #load adp
-load("/home/john/projects/fantasy-football/data/adp-data/adp_2020_ranked_w_age_bye.Rda")
+load("/home/john/projects/fantasy-football/data/adp-data/adp_2021_ranked_w_age_bye.Rda")
 # load draft data
-
+library(lpSolve)
 keeper_data <- data.frame(new_cluster = numeric(),
                           avg_cost = numeric(),
                           avg_ppg = numeric(),
@@ -14,52 +14,38 @@ keeper_data <- data.frame(new_cluster = numeric(),
                           stringsAsFactors = F)
 
 
-# Josh Allen: 20
-# Fournette: 43
-# Montgomery: 28
-# Thomas: 98
-# Woods: 43
-# DJ Moore: 26
-# Kelce: 52
-# Goff: 26
-# Ronald Jones II: 7
-# Beckham: 42
 
-keeper_clusters <- rep(0,12)
+
+
+
+
+keeper_clusters <- rep(0,9)
+
+
 keeper_player <- 
-  c('Allen',
-    'Fournette',
-    'Montgomery',
-    'Thomas',
-    'Woods',
-    'Moore',
-    'Kelce',
-    'Goff',
-    'Jones',
-    'Beckham',
-    'Godwin',
-    'Golladay')
-keeper_position <- c('QB','RB','RB','WR','WR','WR','TE','QB','RB','WR','WR','WR')
-keeper_avg_cost <- c(20,43,28,98,43,26,52,26,7,42,39,45)
+  c(
+    "Conner",
+    "Murray",
+    "Godwin",
+    "Diggs",
+    "Aiyuk",
+    "Henry",
+    "Moore",
+    "Edwards-Hellaire",
+    "Winston"
+  )
 
-keeper_avg_ppg <- c(17.4,
-                    8.9,
-                    8.9,
-                    12.0,
-                    8.5,
-                    9.2,
-                    9.7,
-                    16,
-                    8.9,
-                    9.7,
-                    10.8,
-                    10.8)
+keeper_position <- c('RB','RB','WR','WR','WR','TE','WR','RB','QB')
+# Get these from the cost to keep values
+keeper_avg_cost <- c(47,9,34,31,7,9,33,81,7)
 
 
+# Get these from the cluster estimates
+keeper_avg_ppg <- c(7,6,9.2,11.4,8.5,5.3,8.5,12,15.3)
 
 
-adp_2020_ranked_w_age_bye %>%
-  filter(last_name == 'Jones') %>%
+adp_2021_ranked_w_age_bye %>%
+  #filter(last_name == 'Jones') %>%
   select(player, pos_adp) %>%
   arrange(pos_adp) %>%
   print(n = 27)
@@ -101,7 +87,7 @@ c_te <- ifelse(clustered_w_keeper$position=='TE',1,0)
 # 3 WRs 
 c_wr <- ifelse(clustered_w_keeper$position=='WR',1,0)
 # 2 keepers
-c_keeper <- c(rep(1,12),rep(0,165))
+c_keeper <- c(rep(1,9),rep(0,165))
 
 direction <- c('<=','==','==','==','==','<=')
 
@@ -137,8 +123,8 @@ clustered_w_keeper %>%
             total_cost = sum(avg_cost))
 
 
-  results <- list()
-s## 
+results <- list()
+## 
 for(d in c(150:292)){
   print(d)
   clustered_w_keeper$in_solution <- NULL
@@ -218,7 +204,7 @@ c_te <- ifelse(no_rb_clustered_w_keeper$position=='TE',1,0)
 # 3 WRs 
 c_wr <- ifelse(no_rb_clustered_w_keeper$position=='WR',1,0)
 # 2 keepers
-c_keeper <- c(rep(1,10),rep(0,162))
+c_keeper <- c(rep(1,9),rep(0,162))
 
 direction <- c('<=','==','==','==','==','<=')
 
@@ -329,7 +315,7 @@ c_te <- ifelse(no_rb_clustered_w_keeper$position=='TE',1,0)
 # 3 WRs 
 c_wr <- ifelse(no_rb_clustered_w_keeper$position=='WR',1,0)
 # 2 keepers
-c_keeper <- c(rep(1,10),rep(0,155))
+c_keeper <- c(rep(1,9),rep(0,155))
 
 direction <- c('<=','==','==','==','==','<=')
 
@@ -359,6 +345,3 @@ dim(no_rb_clustered_w_keeper)
 no_rb_clustered_w_keeper$in_solution = solved$solution
 
 no_rb_clustered_w_keeper %>% filter(in_solution == 1) 
-
-
-

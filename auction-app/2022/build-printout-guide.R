@@ -1,9 +1,16 @@
-load("/home/john/projects/fantasy-football/data/adp-data/adp_2021_ranked_w_age_bye.Rda")
+# No ages for 2022...need to reformat data to use nfl-verse instead. 
+## Use just adp and create clusters
+load("/home/john/projects/fantasy-football/data/adp-data/adp_2023_raw.Rda")
 
-colnames(adp_2021_ranked_w_age_bye)
+adp_w_rankings <-
+  adp %>%
+  select(player,pos,team,overall) %>%
+  group_by(pos) %>%
+  arrange(overall) %>%
+  mutate(pos_adp = row_number())
 
-adp_2021_ranked_w_age_bye_cluster <-
-  adp_2021_ranked_w_age_bye %>%
+adp_cluster <-
+  adp_w_rankings %>%
   mutate(cluster = case_when(pos == 'QB' & between(pos_adp,1,2) ~ 1,
                              pos == 'QB' & between(pos_adp,3,4) ~ 2,
                              pos == 'QB' & between(pos_adp,5,8) ~ 3,
@@ -60,7 +67,7 @@ df <- bind_rows(qb_single_obs_per_cluster %>% mutate(position = 'QB',
                                                      avg_ppg = round(avg_ppg,1)))
 
 draft_data <-
-  adp_2021_ranked_w_age_bye_cluster %>%
+  adp_cluster %>%
   left_join(.,
             df,
             by = c("cluster","pos" = "position"))
@@ -71,7 +78,7 @@ draft_data_sorted <-
 draft_data %>%
   group_by(pos) %>%
   arrange(pos,pos_adp) %>% 
-  select(cluster,pos,pos_adp,player,age,bye,avg_ppg,avg_cost)
+  select(cluster,pos,pos_adp,player,avg_ppg,avg_cost)
 
 readr::write_csv(x = draft_data_sorted,
-                 path = "/home/john/projects/fantasy-football/analysis/2021/auction-app-guide.csv")
+                 file = "/home/john/projects/fantasy-football/analysis/2023/auction-app-guide.csv")

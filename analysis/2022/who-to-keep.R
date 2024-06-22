@@ -6,6 +6,7 @@ load("/home/john/projects/fantasy-football/data/clustering-data/smoothed-and-clu
 load("/home/john/projects/fantasy-football/data/adp-data/adp_2021_ranked_w_age_bye.Rda")
 # load draft data
 library(lpSolve)
+library(tidyverse)
 keeper_data <- data.frame(new_cluster = numeric(),
                           avg_cost = numeric(),
                           avg_ppg = numeric(),
@@ -13,50 +14,32 @@ keeper_data <- data.frame(new_cluster = numeric(),
                           position = character(),
                           stringsAsFactors = F)
 
-
-
-
-
-
-
-keeper_clusters <- rep(0,11)
+keeper_clusters <- rep(0,6)
 
 
 keeper_player <- 
   c(
-    "Conner",
-    "Murray",
-    "Godwin",
+    "Tua",
+    "KW3",
     "Diggs",
-    "Aiyuk",
-    "Henry",
-    "Moore",
-    "Edwards-Hellaire",
-    "Winston",
-    "Chubb", #via trade
-    "Gibson" #via trade
+    "Waddle",
+    "Brown",
+    "Hopkins"
   )
 
-keeper_position <- c('RB','RB','WR','WR','WR','TE','WR','RB','QB','RB','RB')
+keeper_position <- c("QB",
+                     "RB",
+                     "WR",
+                     "WR",
+                     "WR",
+                     "WR")
 # Get these from the cost to keep values
-keeper_avg_cost <- c(47,9,34,31,7,9,33,81,7,51,43)
-
+keeper_avg_cost <- c(
+  30,7,45,31,47,15
+)
 
 # Get these from the cluster estimates
-keeper_avg_ppg <- c(7,6,9.2,11.4,8.5,5.3,8.5,12,15.3,14.3,11)
-
-
-adp_2021_ranked_w_age_bye %>%
-  #filter(last_name == 'Jones') %>%
-  select(player, pos_adp) %>%
-  arrange(pos_adp) %>%
-  print(n = 27)
-
-rb_cluster_data %>%
-  arrange(desc(avg_ppg)) %>%
-  ungroup() %>%
-  filter(row_number() == 28)
-
+keeper_avg_ppg <- c(17.4,11.0,11.4,10.2,10.8,8.0)
 
 keeper_data <- data.frame(new_cluster = keeper_clusters,
                           avg_cost = keeper_avg_cost,
@@ -89,7 +72,7 @@ c_te <- ifelse(clustered_w_keeper$position=='TE',1,0)
 # 3 WRs 
 c_wr <- ifelse(clustered_w_keeper$position=='WR',1,0)
 # 2 keepers
-c_keeper <- c(rep(1,11),rep(0,165))
+c_keeper <- c(rep(1,6),rep(0,159))
 
 direction <- c('<=','==','==','==','==','<=')
 
@@ -118,7 +101,7 @@ solved$solution
 clustered_w_keeper$in_solution = solved$solution
 
 clustered_w_keeper %>% filter(in_solution == 1) 
-clustered_w_keeper %>% 
+   clustered_w_keeper %>% 
   filter(in_solution == 1) %>% 
   ungroup() %>% 
   summarise(total_ppg = sum(avg_ppg),
@@ -156,7 +139,10 @@ results_df$budget <- c(150:292)
 
 results_df
 
-?spread
+
+
+
+
 results_df_spread <-
   results_df %>%
   gather(.,
@@ -171,6 +157,28 @@ results_df_spread2 <-
   results_df_spread %>%
   select(-place) %>%
   mutate(present = 1)
+
+
+
+results_df_spread3 <-
+  results_df_spread2 %>%
+  mutate(position = ifelse(player %in% c('Chubb'),'RB',
+                           ifelse(player %in% c('Fields','Lance'),'QB',
+                                  ifelse(player %in% c('Diggs'),'WR',stringr::str_sub(player,1,2)))),
+         cluster = ifelse(player %in% c('Chubb','Fields','Lance','Diggs'),NA,str_sub(player,4,4)))
+
+results_df_spread3 %>%
+  group_by(budget,position,cluster) %>%
+  summarize(count = n()) %>%
+  View()
+
+results_df_spread3 %>%
+  group_by(budget,position,cluster) %>%
+  summarize(count = n()) %>%
+  filter(position == 'TE') %>%
+  View()
+
+
 
 p <- 
   ggplot(results_df_spread2,
@@ -206,7 +214,7 @@ c_te <- ifelse(no_rb_clustered_w_keeper$position=='TE',1,0)
 # 3 WRs 
 c_wr <- ifelse(no_rb_clustered_w_keeper$position=='WR',1,0)
 # 2 keepers
-c_keeper <- c(rep(1,9),rep(0,162))
+c_keeper <- c(rep(1,4),rep(0,162))
 
 direction <- c('<=','==','==','==','==','<=')
 
